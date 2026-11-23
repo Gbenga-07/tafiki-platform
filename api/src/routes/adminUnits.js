@@ -29,7 +29,7 @@ r.patch('/packages/:id', requirePerm('packages'), async (req, res) => {
   await activity.log(me(req), 'package.updated', { type: 'package', id: p.id }, upd);
   res.json({ package: await shape(await db('packages').where({ id: p.id }).first()) });
 });
-r.post('/packages/:id/open', requirePerm('packages'), async (req, res) => { const p = await units.openPackage(req.params.id, req.body && req.body.storeUserId, me(req)); res.json({ package: await shape(p) }); });
+r.post('/packages/:id/open', requirePerm('packages'), async (req, res) => { const p = await units.openPackage(req.params.id, req.body && req.body.storeUserId, me(req)); const ds = await require('../lib/ops').deliveriesForPackage(p.id, me(req)); res.json({ package: await shape(p), deliveries: ds.map((d) => d.code) }); });
 
 r.get('/holdings', async (req, res) => {
   let q = getDb()('holdings as h').join('users as u', 'u.id', 'h.user_id').join('packages as p', 'p.id', 'h.package_id')

@@ -47,7 +47,7 @@ cd tafiki-platform/api      # the API folder in the repository
 npm ci --omit=dev
 cp .env.example .env && nano .env
 ```
-In `.env` set at least: `DB_PASSWORD`, `JWT_SECRET` (make one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`), `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD`, and your SMTP details when you have an email provider.
+In `.env` set at least: `DB_PASSWORD`, `JWT_SECRET`, `PAYSTACK_SECRET_KEY`, `TERMII_API_KEY` and `TERMII_SENDER_ID` (make one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`), `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD`, and your SMTP details when you have an email provider.
 
 ### 5. Create tables, the first Super Admin, and start
 ```bash
@@ -114,7 +114,7 @@ cd ~/tafiki-platform && git pull && cd api && npm ci --omit=dev && npm run migra
 5. **SSL:** cPanel › SSL/TLS Status › Run AutoSSL for tafiki.com and api.tafiki.com.
 6. **Backups:** cPanel › Backup, or JetBackup if your plan has it.
 
-Limitation: shared hosting may stop idle Node apps and limits background jobs. Stages 3 and 4 run timed jobs (delivery stages, audit reminders, payouts), so a VPS is recommended before launch.
+Note: Termii needs an approved Sender ID (request it in the Termii dashboard; approval can take a few days). Limitation: shared hosting may stop idle Node apps and limits background jobs. Stages 3 and 4 run timed jobs (delivery stages, audit reminders, payouts), so a VPS is recommended before launch.
 
 ---
 

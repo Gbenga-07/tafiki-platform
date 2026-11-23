@@ -10,8 +10,8 @@ Built with Node.js 20+, Express and a MySQL / MariaDB database (works on InterSe
 |---|---|---|
 | 1 | Member accounts and cooperative membership, console sign-in, two-step verification, 7 admin roles, admin management, editing members, password resets, email outbox, activity log | **Done** |
 | 2 | Investment packages, units, Paystack checkout and webhooks, bank-transfer confirmation, certificates, investment terms, unit package | **Done** |
-| 3 | Deliveries with automatic stages and delivery codes (SMS + email), stock on shelves, day-28 audits, remittances, reconciliation, restock | Next |
-| 4 | Payout calculations, wallets and withdrawals, Smile ID verification, SMS provider, email templates, analytics | Planned |
+| 3 | Deliveries with automatic stages, delivery codes by Termii SMS and email, driver delivery links, stock on shelves, day-28 audits and reminders, remittances, reconciliation, automatic restocks | **Done** |
+| 4 | Payout calculations, wallets and withdrawals, Smile ID verification, email templates, analytics | Next |
 | 5 | Connect the website and console to this API, remove prototype data, go live | Planned |
 
 ## Quick start (local)
@@ -132,6 +132,46 @@ Rules: units are confirmed only when the payment is verified **and** the member'
 | POST | /api/admin/payments/:id/reject | payments | Reject a transfer with a reason (member emailed) |
 | GET / PUT | /api/admin/settings/terms | settings to change | Investment terms and escrow account |
 | GET / PUT | /api/admin/settings/unit-package | packages to change | Stock each unit buys (must add up to the unit price) |
+
+## API (Stage 3)
+
+**How a delivery works**
+1. A package opens, so each holding's stock (the unit package × units) becomes a delivery to its FOODCORE store, coded `SO-1040`. Admins can also raise store orders (`TR-2001`).
+2. Every delivery gets a random 6-digit **delivery code**. It is stored encrypted and its hash is checked; the SMS log shows it masked.
+3. Stages move **automatically** every 6 hours: Order Received, Picked Up, In Transit. Logistics can move, delay, pause or set the driver.
+4. At **In Transit** the store manager gets the code by **Termii SMS** (DND route) and email, and can see it in the store portal.
+5. On arrival the driver opens their **delivery link** (no account needed) and enters the code the store gives them. Five wrong codes lock the delivery and alert operations, who can reissue the code. Logistics can complete with an **override** and a written reason (recorded).
+6. Delivered stock is added to the store's consignment account. The first delivery starts **cycle 1**.
+
+**Each cycle (30 days):** the store reports sales; on **day 28** the audit is due (store and auditors are emailed); an Auditor records audited sales; the store pays and reports the **remittance**; it is confirmed; the account is **reconciled**; on day 30, after reconciliation, the **restock** deliveries (`SO-1040-R1`) are created automatically, and their delivery starts the next cycle.
+
+| Method | Path | Who | Purpose |
+|---|---|---|---|
+| GET | /api/store/account | store | Stock received, audited sales, remittances, due, on shelf, current cycle |
+| GET | /api/store/deliveries(/:id) | store | Deliveries; the detail shows the delivery code until delivered |
+| POST / GET | /api/store/sales | store | Report sales for the current cycle |
+| POST / GET | /api/store/remittances | store | Report a remittance (RM-0001) |
+| GET | /api/store/cycles | store | Cycle dates and status |
+| GET | /api/driver/:token | driver link | Delivery to complete: store, address, bags |
+| POST | /api/driver/:token/complete | driver link | Complete with the store's code |
+| GET | /api/holdings/:id/deliveries | unit holder | Deliveries for my stake |
+| GET | /api/admin/deliveries?open=1&storeId=&kind= | any admin | All deliveries |
+| GET | /api/admin/deliveries/:id | any admin | Lines, stage history, driver link |
+| POST | /api/admin/deliveries | logistics | Raise a store order |
+| POST | /api/admin/deliveries/:id/advance | logistics | Move to the next stage |
+| PATCH | /api/admin/deliveries/:id | logistics | Driver, vehicle, automatic stages on/off |
+| POST | /api/admin/deliveries/:id/delay | logistics | Delay the next automatic stage |
+| POST | /api/admin/deliveries/:id/complete | logistics | Complete with the store's code |
+| POST | /api/admin/deliveries/:id/override | logistics | Complete without the code, with a reason |
+| POST | /api/admin/deliveries/:id/reissue-code | logistics | New code by SMS |
+| GET | /api/admin/stores, /api/admin/stores/:id | any admin | Stores with accounts, cycles, remittances, sales |
+| POST | /api/admin/stores/:id/audit | audit | Record day-28 audited sales |
+| POST | /api/admin/stores/:id/reconcile | audit | Reconcile once remittance covers audited sales |
+| GET | /api/admin/remittances?status= | any admin | Remittances |
+| POST | /api/admin/remittances/:id/confirm, /reject | audit | Confirm or reject |
+| GET | /api/admin/sms | any admin | SMS log (codes masked) |
+
+Background jobs (every few minutes): automatic delivery stages, restock release, audit reminders, expired reservations.
 
 ## Deploying on InterServer
 

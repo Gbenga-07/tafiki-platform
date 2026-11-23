@@ -47,6 +47,12 @@ r.post('/', async (req, res) => {
   res.status(201).json({ holding: shapeH(h, await db('packages').where({ id: h.package_id }).first()) });
 });
 
+r.get('/:id/deliveries', async (req, res) => {
+  const db = getDb(); const h = await db('holdings').where({ id: req.params.id, user_id: req.user.id }).first(); if (!h) throw new HttpError(404, 'Not found.');
+  const ds = await db('deliveries').where({ holding_id: h.id }).orderBy('created_at');
+  res.json({ deliveries: ds.map((d) => ({ code: d.code, kind: d.kind, cycle: d.cycle, stage: d.status, value: Number(d.value), deliveredAt: d.delivered_at, createdAt: d.created_at })) });
+});
+
 r.post('/:id/pay', async (req, res) => {
   const method = req.body && req.body.method; if (!['card', 'debit', 'transfer'].includes(method)) throw bad('Choose card, bank debit or bank transfer.');
   const db = getDb(); const h = await db('holdings').where({ id: req.params.id, user_id: req.user.id }).first();
