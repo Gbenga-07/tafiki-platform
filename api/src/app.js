@@ -38,9 +38,11 @@ function createApp() {
   app.use('/api', wrap(require('./routes/packages').router));
   app.use('/api/holdings', wrap(require('./routes/holdings')));
   app.use('/api/admin', wrap(require('./routes/adminUnits')));
+  app.use('/api/me', wrap(require('./routes/money')));
   app.use('/api/store', wrap(require('./routes/store')));
   app.use('/api/driver', authLimit, wrap(require('./routes/driver')));
   app.use('/api/admin', wrap(require('./routes/adminOps')));
+  app.use('/api/admin', wrap(require('./routes/adminMoney')));
   app.use('/api/admin', wrap(require('./routes/adminMisc')));
   app.use((req, res) => res.status(404).json({ error: 'Not found.' }));
   // eslint-disable-next-line no-unused-vars

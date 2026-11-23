@@ -11,8 +11,8 @@ Built with Node.js 20+, Express and a MySQL / MariaDB database (works on InterSe
 | 1 | Member accounts and cooperative membership, console sign-in, two-step verification, 7 admin roles, admin management, editing members, password resets, email outbox, activity log | **Done** |
 | 2 | Investment packages, units, Paystack checkout and webhooks, bank-transfer confirmation, certificates, investment terms, unit package | **Done** |
 | 3 | Deliveries with automatic stages, delivery codes by Termii SMS and email, driver delivery links, stock on shelves, day-28 audits and reminders, remittances, reconciliation, automatic restocks | **Done** |
-| 4 | Payout calculations, wallets and withdrawals, Smile ID verification, email templates, analytics | Next |
-| 5 | Connect the website and console to this API, remove prototype data, go live | Planned |
+| 4 | Payout runs (website formula), reserve top-ups and annual cap, wallets, withdrawals, redemptions, Smile ID identity checks, analytics | **Done** |
+| 5 | Connect the website and console to this API, remove prototype data, go live | Next |
 
 ## Quick start (local)
 
@@ -172,6 +172,38 @@ Rules: units are confirmed only when the payment is verified **and** the member'
 | GET | /api/admin/sms | any admin | SMS log (codes masked) |
 
 Background jobs (every few minutes): automatic delivery stages, restock release, audit reminders, expired reservations.
+
+## API (Stage 4)
+
+**Payout formula** (per package, every 90 days, same as the website and console):
+1. Tax = profit × 34% (company income tax 30% + development levy 4%).
+2. Unit holders are paid first: target ₦166,667 per unit (8.33% of ₦2M), kept under the 35% annual cap.
+3. If profit after tax is short of the target, the shortfall comes from the package's payout reserve (as far as it goes).
+4. Reserve top-up = up to 10% of profit; FOODCORE's share = up to 10.1% of profit; the remainder goes to operations.
+
+Example: ₦48M profit on 40 units: tax ₦16,320,000 · unit holders ₦6,666,680 · reserve ₦4,800,000 · FOODCORE ₦4,848,000 · operations ₦15,365,320.
+
+| Method | Path | Who | Purpose |
+|---|---|---|---|
+| POST | /api/me/kyc/start | member | Smile ID web token for the identity check widget |
+| GET | /api/me/kyc | member | Identity status and checks |
+| POST | /webhooks/smileid | Smile ID | Signed result. Approved codes verify the member and confirm paid units; others go to manual review |
+| GET | /api/me/wallet | member | Balance and transactions |
+| POST / GET | /api/me/wallet/withdrawals | member | Withdraw (min ₦1,000, identity verified, to own bank account) |
+| POST | /api/me/holdings/:id/redeem, /redeem/cancel | member | Redeem after the 12-month hold (90 days' notice) |
+| GET | /api/admin/payouts?packageId= | any admin | Payout runs |
+| GET | /api/admin/payouts/:packageId/preview?profit= | any admin | Full breakdown before paying, plus a suggested profit |
+| POST | /api/admin/payouts/:packageId | payouts | Run the payout (once per cycle) and credit wallets |
+| GET | /api/admin/withdrawals?status= | any admin | Withdrawals |
+| POST | /api/admin/withdrawals/:id/pay, /reject | payouts | Pay (with bank transfer reference) or reject (money returns to wallet) |
+| GET | /api/admin/redemptions | any admin | Redemption requests |
+| POST | /api/admin/redemptions/:id/settle | payouts | Settle after the notice period: capital to wallet, units closed |
+| GET | /api/admin/kyc?status=review | any admin | Smile ID results, including those needing review |
+| GET | /api/admin/analytics | any admin | Capital raised, new capital, stock delivered, remittances, payouts by month; totals; units by status |
+
+## Testing
+
+`npm test` runs all tests on an in-memory database. `npm run test:mysql` runs the same tests on MySQL/MariaDB (set TEST_DB_USER and TEST_DB_PASSWORD). Paystack, Termii and Smile ID are simulated in tests; try each in its sandbox before going live.
 
 ## Deploying on InterServer
 

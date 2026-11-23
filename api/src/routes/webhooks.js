@@ -17,4 +17,11 @@ r.post('/paystack', express.raw({ type: '*/*', limit: '1mb' }), async (req, res)
     if (v.status === 'success' && Math.round(v.amount) === Math.round(Number(pay.amount) * 100) && v.currency === 'NGN') await units.markPaymentSuccess(pay, { channel: v.channel, raw: v });
   } catch (e) { console.error('paystack webhook', e.message); }
 });
+// Smile ID posts identity results here. The signature and timestamp prove they came from Smile ID.
+r.post('/smileid', express.json({ limit: '2mb' }), async (req, res) => {
+  const kyc = require('../lib/kyc');
+  if (!kyc.validCallback(req.body)) return res.status(401).end();
+  res.status(200).json({ ok: true });
+  try { await kyc.handleResult(req.body); } catch (e) { console.error('smileid webhook', e.message); }
+});
 module.exports = r;
