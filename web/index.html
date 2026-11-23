@@ -2073,6 +2073,24 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
 .ad-kpi>div[class^="k"] b{text-shadow:0 1px 0 rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.25)}
 .ad-kpi>div[class^="k"] span{text-shadow:0 1px 0 rgba(0,0,0,.25)}
 .ad-kpi>div[class^="k"] small{position:relative;display:block;line-height:1.35}
+
+/* ===== Glossy 3D cards across the site, portals and console (colours unchanged) ===== */
+/* light cards: a soft sheen over their own colour, a bright top rim and layered depth */
+:is(.card,.u-card,.ad-card,.an-card,.au-card,.dl-card,.float-card,.fs-card,.kpi,.sm-card,.con-card,.dcard,.stat){
+ background-image:linear-gradient(180deg,rgba(255,255,255,.95) 0%,rgba(255,255,255,0) 38%,rgba(28,60,10,.035) 100%);
+ box-shadow:inset 0 1px 0 rgba(255,255,255,1),inset 0 -2px 0 rgba(28,60,10,.05),0 1px 2px rgba(20,45,8,.06),0 8px 20px -8px rgba(20,45,8,.18),0 22px 34px -22px rgba(20,45,8,.24)!important;
+ transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .25s}
+:is(a.card,.card.clickable,.store-card,.fs-card,.dl-card,.float-card,a.ad-card):hover{transform:translateY(-3px);
+ box-shadow:inset 0 1px 0 #fff,inset 0 -2px 0 rgba(28,60,10,.06),0 2px 4px rgba(20,45,8,.08),0 14px 28px -10px rgba(20,45,8,.26),0 30px 44px -26px rgba(20,45,8,.3)!important}
+/* green cards: glass highlight, bevelled rims and a deeper drop */
+:is(.coop-card,.hy-card,.csg-card){position:relative;overflow:hidden;isolation:isolate;
+ box-shadow:inset 0 1.5px 0 rgba(255,255,255,.38),inset 0 -3px 0 rgba(0,0,0,.26),inset 0 0 0 1px rgba(0,0,0,.14),0 2px 3px rgba(10,28,3,.2),0 12px 24px -8px rgba(10,28,3,.4),0 26px 40px -22px rgba(10,28,3,.45)!important}
+.coop-card::before,.hy-card::after,.csg-card::after{content:"";position:absolute;inset:0 0 auto 0;height:50%;border-radius:inherit;border-bottom-left-radius:50% 22%;border-bottom-right-radius:50% 22%;
+ background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,.07) 60%,rgba(255,255,255,0));pointer-events:none;z-index:0}
+.coop-card>*,.hy-card>*,.csg-card>*{position:relative;z-index:1}
+.csg-card.c2::after{background:linear-gradient(180deg,rgba(255,255,255,.7),rgba(255,255,255,.15) 60%,rgba(255,255,255,0))}
+:is(.coop-card,.hy-card,.csg-card) :is(b,strong,h2,h3,.num){text-shadow:0 1px 0 rgba(0,0,0,.28)}
+.csg-card.c2 :is(b,strong,h2,h3,.num){text-shadow:0 1px 0 rgba(255,255,255,.6)}
 </style>
 </head>
 <body>
