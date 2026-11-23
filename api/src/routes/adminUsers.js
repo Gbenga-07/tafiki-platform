@@ -44,6 +44,7 @@ r.patch('/:id', requirePerm('members'), async (req, res) => {
   if (!changed.length) return res.json({ user: present.userFull(u), changed: [] });
   await db('users').where({ id: u.id }).update({ ...upd, updated_at: new Date() });
   await activity.log(me(req), 'member.edited_by_admin', { type: 'user', id: u.id }, { fields: changed });
+  if (changed.includes('kyc_status') && upd.kyc_status === 'verified') await require('../lib/units').onKycVerified(u.id, me(req));
   const fields = changed.map((k) => LABELS[k]).join(', ');
   for (const to of [...new Set([u.email, upd.email || u.email])]) await sendEmail({ to, name: u.name.split(' ')[0], category: 'account', subject: 'Your Tafiki account details were updated', ref: u.id, paragraphs: [`The following details on your account were updated by Tafiki: ${fields}.`, 'If you did not request this, contact support@tafiki.com straight away.'] });
   res.json({ user: present.userFull(await db('users').where({ id: u.id }).first()), changed });

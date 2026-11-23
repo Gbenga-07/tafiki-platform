@@ -9,8 +9,8 @@ Built with Node.js 20+, Express and a MySQL / MariaDB database (works on InterSe
 | Stage | What it covers | Status |
 |---|---|---|
 | 1 | Member accounts and cooperative membership, console sign-in, two-step verification, 7 admin roles, admin management, editing members, password resets, email outbox, activity log | **Done** |
-| 2 | Investment packages, units, Paystack checkout and webhooks, escrow confirmation, certificates | Next |
-| 3 | Deliveries with automatic stages and delivery codes (SMS + email), stock on shelves, day-28 audits, remittances, reconciliation, restock | Planned |
+| 2 | Investment packages, units, Paystack checkout and webhooks, bank-transfer confirmation, certificates, investment terms, unit package | **Done** |
+| 3 | Deliveries with automatic stages and delivery codes (SMS + email), stock on shelves, day-28 audits, remittances, reconciliation, restock | Next |
 | 4 | Payout calculations, wallets and withdrawals, Smile ID verification, SMS provider, email templates, analytics | Planned |
 | 5 | Connect the website and console to this API, remove prototype data, go live | Planned |
 
@@ -94,6 +94,44 @@ All write requests: JSON body, header `X-Tafiki-Client: 1`, cookies included (`c
 | POST | /api/admin/users/:id/status | members | `active` or `suspended` |
 | GET | /api/admin/activity | any admin | Activity log |
 | GET | /api/admin/emails, /api/admin/emails/:id | any admin | Email correspondence |
+
+## API (Stage 2)
+
+**Public**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /api/packages, /api/packages/:id | Packages with units taken, confirmed and open |
+| GET | /api/terms | Unit price, target return, hold period, unit package (stock per unit), escrow account |
+| GET | /api/certificates/:certNo/verify?code= | Check a Certificate of Stake |
+
+**Members (unit holders)**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /api/holdings, /api/holdings/:id | My units, payments and certificate (with verification code) |
+| POST | /api/holdings | Reserve units: `{packageId, units, signedName, agree:true}`. Held for 48 hours |
+| POST | /api/holdings/:id/pay | `{method:'card'|'debit'}` returns the Paystack checkout link; `{method:'transfer'}` returns escrow details and a reference |
+| POST | /api/holdings/:id/transfer-sent | Member reports the bank transfer; finance confirms it |
+| GET | /api/holdings/payments/:reference/verify | Check a Paystack payment after checkout |
+| DELETE | /api/holdings/:id | Cancel an unpaid reservation |
+| POST | /webhooks/paystack | Paystack calls this (signature checked, then verified with Paystack) |
+
+Rules: units are confirmed only when the payment is verified **and** the member's identity is verified. Certificates are issued at that moment. When every unit in a package is confirmed, it becomes **full** and Super Admins and Operations Managers are emailed. Unpaid reservations are released automatically when they expire.
+
+**Console**
+
+| Method | Path | Permission | Purpose |
+|---|---|---|---|
+| GET | /api/admin/packages | any admin | Packages with funding status |
+| POST / PATCH | /api/admin/packages(/:id) | packages | Create or edit a package |
+| POST | /api/admin/packages/:id/open | packages | Open a full package: links the FOODCORE store, units start earning, holders emailed |
+| GET | /api/admin/holdings?status=&packageId= | any admin | All unit holdings |
+| GET | /api/admin/payments?status= | any admin | All payments |
+| POST | /api/admin/payments/:id/confirm | payments | Confirm a bank transfer found in escrow |
+| POST | /api/admin/payments/:id/reject | payments | Reject a transfer with a reason (member emailed) |
+| GET / PUT | /api/admin/settings/terms | settings to change | Investment terms and escrow account |
+| GET / PUT | /api/admin/settings/unit-package | packages to change | Stock each unit buys (must add up to the unit price) |
 
 ## Deploying on InterServer
 

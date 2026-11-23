@@ -13,6 +13,7 @@ function createApp() {
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(cors({ origin: (o, cb) => cb(null, !o || config.corsOrigins.includes(o) || !config.isProd), credentials: true }));
+  app.use('/webhooks', require('./routes/webhooks')); // raw body, before JSON parsing
   app.use(express.json({ limit: '200kb' }));
   app.use(cookieParser());
   // Simple CSRF protection: browsers cannot send this header cross-site without passing CORS.
@@ -34,6 +35,9 @@ function createApp() {
   app.use('/api/admin/auth', authLimit, wrap(require('./routes/adminAuth')));
   app.use('/api/admin/admins', wrap(require('./routes/admins')));
   app.use('/api/admin/users', wrap(require('./routes/adminUsers')));
+  app.use('/api', wrap(require('./routes/packages').router));
+  app.use('/api/holdings', wrap(require('./routes/holdings')));
+  app.use('/api/admin', wrap(require('./routes/adminUnits')));
   app.use('/api/admin', wrap(require('./routes/adminMisc')));
   app.use((req, res) => res.status(404).json({ error: 'Not found.' }));
   // eslint-disable-next-line no-unused-vars
