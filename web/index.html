@@ -1994,6 +1994,7 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
 .sm-prods{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
 @media(max-width:700px){.sm-g{grid-template-columns:1fr 1fr}.sm-ck,.sm-prods{grid-template-columns:1fr}}
 @media(max-width:640px){.fx-top{flex-wrap:wrap;gap:10px}.fx-top .fx-search{flex:1 1 100%;order:2;min-width:0}.fx-top>*:not(.fx-search){flex-wrap:wrap}.ai-topr{display:flex;flex-wrap:wrap;gap:8px;max-width:100%}.ai-topr .ai-sw-t{display:none}.ad-two{grid-template-columns:minmax(0,1fr)!important}.ad-two>*{min-width:0}}
+.fcn.fcn2{display:inline-flex;align-items:center!important;gap:.4em;flex-wrap:nowrap;max-width:100%}.fcn.fcn2 .fcn-t{min-width:0;overflow-wrap:break-word}.fcn.fcn2 .fpin{font-size:1.25em;flex:none;line-height:0}.fcn.fcn2 .fcn-t{font-weight:700;letter-spacing:-.01em}
 /* consignment strength section */
 .csg{background:radial-gradient(90% 120% at 0% 0%,#3C7A1C 0%,rgba(60,122,28,0) 55%),linear-gradient(150deg,#25520D,#132D04);color:#fff}
 .csg .sec-h h2{color:#fff}.csg .sec-h p{color:#CFE3B8;max-width:760px;margin-left:auto;margin-right:auto}.csg .eyebrow{color:#A5C783}
@@ -2375,7 +2376,7 @@ function locationsStrip(){
 const FPIN='<span class="fpin" aria-hidden="true"><svg viewBox="0 0 24 30"><path d="M12 1C6 1 1.5 5.5 1.5 11.3c0 7.6 9 16.4 9.9 17.2.3.3.9.3 1.2 0 .9-.8 9.9-9.6 9.9-17.2C22.5 5.5 18 1 12 1z"/><circle cx="12" cy="11.2" r="7.3"/></svg><img src="img/foodcore-mark.png" alt=""></span>';
 const LOCPIN=FPIN;
 const fcW=()=>`<img class="fcw" src="img/foodcore-word.png" alt="FOODCORE">`;
-const fcName=s=>`<span class="fcn"><img class="fcl" src="img/foodcore-mark.png" alt=""><img class="fcw" src="img/foodcore-word.png" alt="FOODCORE"><span class="fl nopin">${FPIN}${esc(s.name.replace(/^FOODCORE\s*/,''))}</span></span>`;
+const fcName=s=>`<span class="fcn fcn2">${FPIN}<span class="fcn-t nopin">FOODCORE ${esc(s.name.replace(/^FOODCORE\s*/,''))}</span></span>`;
 function storeCard(s){const t=taken(s),f=freeSlots(s),open=s.stage==='funding'&&f>0;return `<div class="card store-card ${open?'clickable':''}" ${open?`data-a="startInvest" data-id="${s.id}" role="button" tabindex="0" aria-label="Reserve units in ${esc(s.name)}"`:''}>
  <div class="top"><div><h3>${fcName(s)}</h3><p class="muted small loc-l">${esc(s.area)}, ${esc(s.city)}</p></div>${stageChip(s)}</div>
  ${slotGrid(s,route().startsWith('me')&&S.session&&S.session.userId)}
