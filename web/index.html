@@ -2013,6 +2013,29 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
 .mfee{display:flex;gap:10px;align-items:flex-start;background:#F6F8F1;border:1px solid #E3E9D8;border-radius:12px;padding:11px 13px;font-size:13px;color:#3B4A30}.mfee>svg{width:18px;height:18px;flex:none;margin-top:1px;color:#4E7A2C}.mfee b{display:block;color:#22331A;font-weight:600}.mfee span{display:block;color:#6A7760;margin-top:2px;line-height:1.45}
 .mfee-split{display:grid;grid-template-columns:1fr auto;gap:6px 14px;margin:0;padding:12px 14px;border:1px solid #E6EADF;border-radius:12px;background:#fff;font-size:13.5px}.mfee-split dt{color:#5E6B54;margin:0}.mfee-split dt small{display:block;font-size:11.5px;color:#97A18C}.mfee-split dd{margin:0;text-align:right;color:#22331A}.mfee-split dt:nth-last-of-type(1),.mfee-split dd:last-of-type{border-top:1px solid #EEF1E9;padding-top:7px}
 .mo-fee{display:flex;gap:10px;align-items:flex-start;margin:4px 0 14px;font-size:14px;color:#3B4A30}.mo-fee>svg{width:18px;height:18px;flex:none;margin-top:2px;color:#4E7A2C}
+.ddn-t{display:none}
+.ddn-t{align-items:center;justify-content:space-between;gap:12px;width:100%;border:0;background:none;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.ddn-cur{display:flex;align-items:center;gap:10px;min-width:0;font-size:15px;font-weight:600;color:#22331A}.ddn-cur>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ddn-cur svg{width:20px;height:20px;flex:none;color:#3E6B22}
+.ddn-dot{width:8px;height:8px;border-radius:50%;background:#E07B26;flex:none;box-shadow:0 0 0 4px rgba(224,123,38,.15)}
+.ddn-ic{position:relative;flex:none;width:42px;height:42px;border-radius:14px;background:radial-gradient(120% 70% at 50% -10%,rgba(255,255,255,.38) 0 45%,rgba(255,255,255,0) 50%),linear-gradient(180deg,#6FA544,#3E7A1F 55%,#2A5A12);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -2px 0 rgba(0,0,0,.18),0 6px 14px rgba(29,65,7,.22)}
+.ddn-ic i{position:absolute;left:12px;height:2.2px;border-radius:2px;background:#fff;transition:transform .28s cubic-bezier(.6,.05,.3,1),opacity .2s,width .28s,top .28s}
+.ddn-ic i:nth-child(1){top:14px;width:18px}.ddn-ic i:nth-child(2){top:20px;width:12px}.ddn-ic i:nth-child(3){top:26px;width:15px}
+.ddn-t[aria-expanded="true"] .ddn-ic i:nth-child(1){top:20px;width:18px;transform:rotate(45deg)}
+.ddn-t[aria-expanded="true"] .ddn-ic i:nth-child(2){opacity:0;transform:translateX(6px)}
+.ddn-t[aria-expanded="true"] .ddn-ic i:nth-child(3){top:20px;width:18px;transform:rotate(-45deg)}
+@keyframes ddnIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@media(max-width:860px){
+ .ddn-site{display:flex;padding:8px 12px 8px 18px;background:var(--cream);border-bottom:1px solid var(--line)}
+ .mnav.ddn-list{display:none!important}
+ .mnav.ddn-list.open{display:flex!important;flex-direction:column;gap:2px;padding:8px 12px 12px;overflow:visible;animation:ddnIn .22s ease-out}
+ .mnav.ddn-list.open a{font-size:15px;padding:12px 14px;border-radius:12px;opacity:1}
+ .mnav.ddn-list.open a.on{background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.05)}}
+@media(max-width:900px){
+ .ddn-portal{display:flex;padding:8px 12px 8px 16px}
+ .fx-nav.ddn-list{display:none!important}
+ .fx-nav.ddn-list.open{display:flex!important;flex-direction:column;overflow:visible;gap:2px;padding:4px 0 12px;animation:ddnIn .22s ease-out}
+ .fx-nav.ddn-list.open .sub{display:block;padding:12px 0 4px 28px}
+ .fx-nav.ddn-list.open a{margin:0 12px;padding:11px 14px!important;white-space:normal}}
 /* consignment strength section */
 .csg{background:radial-gradient(90% 120% at 0% 0%,#3C7A1C 0%,rgba(60,122,28,0) 55%),linear-gradient(150deg,#25520D,#132D04);color:#fff}
 .csg .sec-h h2{color:#fff}.csg .sec-h p{color:#CFE3B8;max-width:760px;margin-left:auto;margin-right:auto}.csg .eyebrow{color:#A5C783}
@@ -5491,6 +5514,22 @@ if(window.LIVE){const act=window.liveAct;
  A.pkSave=act(async()=>{if(typeof PKD==='undefined'||!PKD||!PKD.length)throw new Error('Add at least one product.');const bad=PKD.find(i=>!String(i.name).trim()||!(+i.bags>0)||!(+i.cost>0));if(bad)throw new Error('Each product needs a name, a number of bags and a cost per bag.');
   await API('/api/admin/settings/unit-package',{method:'PUT',body:{items:PKD.map(i=>({sku:String(i.sku||i.id||i.name).slice(0,40),name:String(i.name).trim(),brand:String(i.brand||'FOODCORE'),size:String(i.size||''),bags:Math.round(+i.bags),cost:Math.round(+i.cost)}))}});PKD=null;},'Unit package saved. New deliveries use it.');
  A.autoRestock=()=>{if(A.newRun)A.newRun({});};}
+/* ---------- mobile: the site menu and the console menu fold into a drop-down ---------- */
+const DDN={};
+function ddnMount(){document.querySelectorAll('.mnav,.fx-nav').forEach(nav=>{const k=nav.classList.contains('mnav')?'site':'portal';
+  if(nav.previousElementSibling&&nav.previousElementSibling.classList.contains('ddn-t'))return;
+  const cur=nav.querySelector('a.on'),svg=cur&&cur.querySelector('svg');const label=cur?(cur.querySelector('span')||cur).textContent.trim():'Menu';
+  const b=document.createElement('button');b.type='button';b.className='ddn-t ddn-'+k;b.dataset.a='ddnToggle';b.dataset.k=k;
+  b.setAttribute('aria-expanded',DDN[k]?'true':'false');b.setAttribute('aria-controls','ddn-'+k);b.setAttribute('aria-label','Menu: '+label);
+  b.innerHTML=`<span class="ddn-cur">${svg?svg.outerHTML:'<i class="ddn-dot"></i>'}<span>${esc(label)}</span></span><span class="ddn-ic" aria-hidden="true"><i></i><i></i><i></i></span>`;
+  nav.id='ddn-'+k;nav.classList.add('ddn-list');nav.classList.toggle('open',!!DDN[k]);nav.parentNode.insertBefore(b,nav);});}
+function ddnSet(k,v){DDN[k]=v;document.querySelectorAll('.ddn-t[data-k="'+k+'"]').forEach(b=>b.setAttribute('aria-expanded',v?'true':'false'));const n=document.getElementById('ddn-'+k);if(n)n.classList.toggle('open',v);}
+A.ddnToggle=d=>ddnSet(d.k,!DDN[d.k]);
+if(typeof RO_OK!=='undefined')RO_OK.add('ddnToggle');
+window.addEventListener('hashchange',()=>{ddnSet('site',false);ddnSet('portal',false);});
+document.addEventListener('click',e=>{['site','portal'].forEach(k=>{if(DDN[k]&&!e.target.closest('.ddn-t[data-k="'+k+'"]')&&!e.target.closest('#ddn-'+k))ddnSet(k,false);});});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){ddnSet('site',false);ddnSet('portal',false);}});
+{const _rDD=render;render=function(){_rDD();try{ddnMount();}catch(e){}};}
 if(!window.LIVE)render();
 </script>
 </body>
