@@ -51,7 +51,8 @@ r.post('/', async (req, res) => {
 r.get('/:id/deliveries', async (req, res) => {
   const db = getDb(); const h = await db('holdings').where({ id: req.params.id, user_id: req.user.id }).first(); if (!h) throw new HttpError(404, 'Not found.');
   const ds = await db('deliveries').where({ holding_id: h.id }).orderBy('created_at');
-  res.json({ deliveries: ds.map((d) => ({ code: d.code, kind: d.kind, cycle: d.cycle, stage: d.status, value: Number(d.value), deliveredAt: d.delivered_at, createdAt: d.created_at })) });
+  const out = []; for (const d of ds) out.push({ id: d.id, code: d.code, kind: d.kind, cycle: d.cycle, stage: d.status, value: Number(d.value), driver: d.driver, deliveredAt: d.delivered_at, createdAt: d.created_at, lines: await db('delivery_lines').where({ delivery_id: d.id }).select('sku', 'name', 'size', 'qty'), log: await db('delivery_log').where({ delivery_id: d.id }).orderBy('id').select('stage', 'at') });
+  res.json({ deliveries: out });
 });
 
 r.post('/:id/pay', async (req, res) => {

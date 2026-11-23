@@ -11,7 +11,7 @@ r.use(requireUser, (req, res, next) => (req.user.role === 'retailer' ? next() : 
 const shapeD = async (d, withCode) => ({ id: d.id, code: d.code, kind: d.kind, cycle: d.cycle, stage: d.status, stageName: ops.STAGES[d.status], driver: d.driver, vehicle: d.vehicle, value: Number(d.value), deliveredAt: d.delivered_at, createdAt: d.created_at,
   lines: await getDb()('delivery_lines').where({ delivery_id: d.id }).select('sku', 'name', 'size', 'brand', 'qty'), log: await getDb()('delivery_log').where({ delivery_id: d.id }).select('stage', 'at'),
   deliveryCode: withCode && d.status < 3 ? box.open(d.code_enc) : undefined });
-r.get('/account', async (req, res) => res.json({ account: await ops.storeAccount(req.user.id) }));
+r.get('/account', async (req, res) => res.json({ account: await ops.storeAccount(req.user.id), packages: await getDb()('packages').where({ store_user_id: req.user.id }).select('id', 'name', 'area', 'city', 'state', 'route', 'stage', 'units_total', 'opened_at', 'target_open'), units: Number((await getDb()('holdings').whereIn('package_id', getDb()('packages').where({ store_user_id: req.user.id }).select('id')).whereIn('status', ['active', 'redeem']).sum({ s: 'units' }).first()).s) || 0 }));
 r.get('/deliveries', async (req, res) => { const ds = await getDb()('deliveries').where({ store_user_id: req.user.id }).orderBy('created_at', 'desc').limit(300); res.json({ deliveries: await Promise.all(ds.map((d) => shapeD(d, false))) }); });
 r.get('/deliveries/:id', async (req, res) => { const d = await getDb()('deliveries').where({ id: req.params.id, store_user_id: req.user.id }).first(); if (!d) throw new HttpError(404, 'Not found.'); res.json({ delivery: await shapeD(d, true) }); });
 r.post('/sales', async (req, res) => {

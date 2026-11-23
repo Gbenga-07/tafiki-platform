@@ -18,7 +18,7 @@ const shape = async (d, full) => { const db = getDb(); const s = await db('users
 r.get('/deliveries', async (req, res) => {
   let q = getDb()('deliveries').orderBy('created_at', 'desc').limit(Math.min(1000, +(req.query.limit || 300)));
   if (req.query.open === '1') q = q.where('status', '<', 3); if (req.query.storeId) q = q.where({ store_user_id: req.query.storeId }); if (req.query.kind) q = q.where({ kind: req.query.kind });
-  res.json({ deliveries: await Promise.all((await q).map((d) => shape(d))) });
+  res.json({ deliveries: await Promise.all((await q).map((d) => shape(d, req.query.full === '1'))) });
 });
 r.get('/deliveries/:id', async (req, res) => res.json({ delivery: await shape(await getD(req.params.id), true) }));
 r.post('/deliveries', requirePerm('logistics'), async (req, res) => {

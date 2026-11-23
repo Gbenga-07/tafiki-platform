@@ -77,6 +77,19 @@ ln -s /etc/nginx/sites-available/tafiki /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 ```
 
+### 6b. Switch the website to live mode
+The website ships in **demo mode** (sample data in the browser, nothing saved). To connect it to the real API, edit one line near the top of `web/index.html`:
+```html
+<meta name="tafiki-api" content="https://api.tafiki.com">
+```
+With that set, the site:
+- signs members in with email and password against the API (no demo accounts, no prototype bar);
+- creates real accounts and opens Smile ID for identity checks;
+- takes card and bank-debit payments through Paystack, and records bank transfers for Finance to confirm;
+- runs the store portal and the console (`https://tafiki.com/#console`) from live data, with each admin limited by their role.
+
+Leave the value empty to go back to demo mode. Do this after step 7, so the API already has its SSL certificate.
+
 ### 7. Domain and free SSL
 At your domain registrar, add **A records** for `tafiki.com`, `www` and `api` pointing to the VPS IP. When they resolve:
 ```bash

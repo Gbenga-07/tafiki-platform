@@ -2,6 +2,7 @@
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
+<meta name="tafiki-api" content="">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tafiki Investor Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2133,9 +2134,9 @@ load();
 const user=id=>S.users.find(u=>u.id===id);
 const store=id=>S.stores.find(s=>s.id===id);
 const me=()=>S.session&&user(S.session.userId);
-const taken=s=>S.holdings.filter(h=>h.storeId===s.id&&HELD.includes(h.status)).reduce((a,h)=>a+h.slots,0);
-const confirmedSlots=s=>S.holdings.filter(h=>h.storeId===s.id&&['reserved','active','redeem'].includes(h.status)).reduce((a,h)=>a+h.slots,0);
-const freeSlots=s=>S.st.slotsPerStore-taken(s);
+let taken=s=>S.holdings.filter(h=>h.storeId===s.id&&HELD.includes(h.status)).reduce((a,h)=>a+h.slots,0);
+let confirmedSlots=s=>S.holdings.filter(h=>h.storeId===s.id&&['reserved','active','redeem'].includes(h.status)).reduce((a,h)=>a+h.slots,0);
+let freeSlots=s=>S.st.slotsPerStore-taken(s);
 const perSlotQ=()=>Math.round(S.st.slotPrice*S.st.qRate);
 const payLine=()=>S.st.slotsPerStore*perSlotQ()/S.st.cycleDays/(S.st.markup/(1+S.st.markup));
 const stockValue=s=>Object.entries(s.stock||{}).reduce((a,[k,q])=>a+q*sku(k).cost,0);
@@ -2149,7 +2150,7 @@ const myHoldings=uid=>S.holdings.filter(h=>h.userId===uid);
 const balance=uid=>S.tx.filter(t=>t.userId===uid).reduce((a,t)=>a+t.amount,0);
 const paidOut=uid=>S.tx.filter(t=>t.userId===uid&&t.type==='payout').reduce((a,t)=>a+t.amount,0);
 const lineValue=(l,price='cost')=>l.qty*(price==='ws'?ws(sku(l.sku)):sku(l.sku)[price]);
-const dValue=(d)=>d.lines.reduce((a,l)=>a+lineValue(l,d.toType==='shop'?'ws':'cost'),0);
+let dValue=(d)=>d.lines.reduce((a,l)=>a+lineValue(l,d.toType==='shop'?'ws':'cost'),0);
 const dest=d=>d.toType==='store'?store(d.toId).name:user(d.toId).shop;
 const destRoute=d=>d.toType==='store'?store(d.toId).route:user(d.toId).route;
 const lockEnd=h=>h.activeSince?iso(add(h.activeSince,Math.round(S.st.lockMonths*30.4))):null;
@@ -5105,7 +5106,7 @@ const CONSOLE_VIEW={email:'viewer@tafiki.com',pw:'View@2026'};
 const _admCfgL=admCfg;admCfg=function(){const c=_admCfgL();if(!c.v2){c.admins.forEach(a=>{if(a.role!=='Super Admin')a.role='Admin';});if(!c.admins.some(a=>a.email===CONSOLE_VIEW.email))c.admins.push({id:'a2',name:'Operations Viewer',email:CONSOLE_VIEW.email,role:'Admin',pw:hpw(CONSOLE_VIEW.pw,CONSOLE_VIEW.email),status:'active',last:null,created:today()});c.v2=1;save();}
  if(!c.v3){[['a3','Logistics Desk','logistics@tafiki.com','Logistics Officer','Move@2026'],['a4','Finance Desk','finance@tafiki.com','Finance Officer','Cash@2026']].forEach(([id,n,e,r,pw])=>{if(!c.admins.some(x=>x.email===e))c.admins.push({id,name:n,email:e,role:r,pw:hpw(pw,e),status:'active',last:null,created:today()});});c.v3=1;save();}return c;};
 const admGroups=()=>{const a=admMe();return a?roleOf(a.role)[2]:[];};
-const admCan=act=>{const a=admMe();if(!a)return false;if(a.role==='Super Admin')return true;if(RO_OK.has(act))return true;const g=ACT_GROUP[act];return !!g&&admGroups().includes(g);};
+let admCan=act=>{const a=admMe();if(!a)return false;if(a.role==='Super Admin')return true;if(RO_OK.has(act))return true;const g=ACT_GROUP[act];return !!g&&admGroups().includes(g);};
 const admRO=()=>{const a=admMe();return !!(a&&a.role!=='Super Admin');};
 const RO_OK=new Set('actTab admCopy admPw aiToggle cert close closeTo conBack conCode conEye conLogin conOut cycView dlAll dlF emAll emF emOpen fxTx fxViewForm fxOT go navBack previewDoc rmAll scrim slide slotAll stAll stPre stTab statement stmt stockReport tcGo tcPrint tcView viewAs viewCert viewDoc viewId shopF pkF coopCert reset'.split(' '));
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el||!route().startsWith('admin')||!admAuthed())return;if(admCan(el.dataset.a))return;e.preventDefault();e.stopImmediatePropagation();const g=ACT_GROUP[el.dataset.a];toast((g?ADM_GROUPS[g][0]+' access is needed for this. ':'Only a Super Admin can do this. ')+'Ask a Super Admin.');},true);
@@ -5200,7 +5201,203 @@ const _faConfigS=faConfig;faConfig=function(){const h=_faConfigS(),i=h.indexOf('
 A.smSave=()=>{const c=smileCfg(),v=id=>document.getElementById(id);c.env=v('sm-env').value;c.partnerId=v('sm-pid').value.trim();c.callback=v('sm-cb').value.trim();c.minScore=+v('sm-min').value;c.auto=v('sm-auto').checked;Object.keys(SMILE_PRODUCTS).forEach(k=>c.products[k]=v('sm-p-'+k).checked);logA('Smile ID settings updated');save();toast('Smile ID settings saved.');render();};
 A.smTest=()=>{const r=smileFake({}, 'NIN','00000000001',true);toast('Test check ('+(smileCfg().env)+'): '+r.result+' · selfie match '+r.score+'%.');};
 
-render();
+/* ============================== LIVE MODE: connects the site to the Tafiki API ==============================
+   Turned on when <meta name="tafiki-api" content="https://api.tafiki.com"> has an address.
+   Without it the site runs as the demo with sample data, exactly as before. */
+const LIVE_API=((document.querySelector('meta[name="tafiki-api"]')||{}).content||'').replace(/\/$/,'');
+window.LIVE=!!LIVE_API;
+if(window.LIVE){
+const API=async(path,opts={})=>{const o={method:opts.method||'GET',credentials:'include',headers:{'Content-Type':'application/json','X-Tafiki-Client':'1'}};if(opts.body!==undefined)o.body=JSON.stringify(opts.body);
+ let res;try{res=await fetch(LIVE_API+path,o);}catch(e){throw Object.assign(new Error('Cannot reach Tafiki right now. Check your connection and try again.'),{status:0});}
+ const j=await res.json().catch(()=>({}));if(!res.ok)throw Object.assign(new Error(j.error||'Something went wrong. Please try again.'),{status:res.status,data:j});return j;};
+window.API=API;
+const toD=x=>{if(typeof x==='string'&&/^\d{4}-\d\d-\d\d[ T]\d\d:\d\d(:\d\d(\.\d+)?)?$/.test(x))x=x.replace(' ','T')+'Z';const d=new Date(x);return isNaN(d)?null:d}, day=x=>{const d=x&&toD(x);return d?d.toISOString().slice(0,10):null}, isoT=x=>{const d=x&&toD(x);return d?d.toISOString():null};
+const IMG={'garri-5':'img/pack-garri.jpg','elubo-5':'img/pack-yam.jpg','rice':'img/pack-rice.jpg','beans':'img/pack-beans.jpg'};
+const LV={me:null,admin:null,perms:[],busy:false};window.LV=LV;
+/* stop every demo-only routine from inventing or changing data */
+save=function(){};ensureFx=function(){};autoTick=function(){return false;};restockTick=function(){return false;};
+if(typeof ensureSmile==='function')ensureSmile=function(){};if(typeof ensureLinkAll==='function')ensureLinkAll=function(){};
+const FLAGS=['fxAcct2','fxAuto','fxBanks','fxCoop','fxCoopNo','fxDemo2','fxLink2','fxLink','fxLinkAll','fxNoTf','fxRec','fxRound2','fxRound','fxSmile','fxStake2','fxStake'];
+function baseState(){const s={st:{markup:.2,cyclesPerMonth:1,cit:.3,devLevy:.04,pay:{provider:'Paystack',mode:'live',publicKey:'',backend:LIVE_API,webhook:LIVE_API+'/webhooks/paystack'},slotPrice:2000000,slotsPerStore:40,qRate:1/12,cover:1.1,lockMonths:12,reservePct:.1,capPct:.35,cycleDays:90,escrowBank:'',escrowAcct:''},users:[],stores:[],holdings:[],payouts:[],tx:[],deliveries:[],log:[],session:null,remits:[],recs:{},sreps:[],outbox:[],nextRef:0,nextTR:0,nextCert:0};FLAGS.forEach(f=>s[f]=1);return s;}
+S=baseState();
+function applyTerms(t){const T=t.terms;Object.assign(S.st,{slotPrice:T.unitPrice,slotsPerStore:T.unitsPerPackage,qRate:T.targetPerCycle,cycleDays:T.cycleDays,cover:T.coverFloor,reservePct:T.reservePct,capPct:T.capPct,lockMonths:T.minHoldMonths,cit:T.citRate,devLevy:T.devLevy});
+ if(t.escrow){S.st.escrowBank=t.escrow.bank;S.st.escrowAcct=t.escrow.accountNumber;}
+ if(t.unitPackage)S.unitPack={items:t.unitPackage.items.map(i=>({id:'pk-'+i.sku,sku:i.sku,name:i.name,brand:i.brand,size:i.size,bags:i.bags,cost:i.cost,img:IMG[i.sku]})),updated:today()};}
+const mapPkg=p=>({id:p.id,name:p.name,area:p.area,city:p.city,state:p.state||'',route:p.route||'',stage:p.stage==='full'?'funding':p.stage,_full:p.stage==='full',target:p.targetOpen||p.target_open||'TBC',opened:day(p.openedAt||p.opened_at),shopId:p.storeUserId||p.store_user_id||null,_total:p.unitsTotal||p.units_total,_taken:p.unitsTaken,_confirmed:p.unitsConfirmed,cash:0,reserve:0,salesDay:0,margin:.1667,stock:{},shortfalls:0});
+/* package counts come from the server, not from holdings in this browser */
+const _taken=taken,_free=freeSlots,_conf=confirmedSlots;
+taken=s=>s&&s._taken!=null?s._taken:_taken(s);freeSlots=s=>s&&s._taken!=null?Math.max(0,(s._total||S.st.slotsPerStore)-s._taken):_free(s);confirmedSlots=s=>s&&s._confirmed!=null?s._confirmed:_conf(s);
+const _dValue=dValue;dValue=d=>d&&d._value!=null?d._value:_dValue(d);
+const tsOf=x=>{const d=x&&toD(x);return d?+d:0}, regTs=(k,x)=>{const v=tsOf(x);if(v){(LV.ts=LV.ts||{})[k]=v}};
+const mapUser=u=>(regTs(u.id,u.createdAt),{id:u.id,name:u.name,email:u.email,phone:u.phone,city:u.city||'—',role:u.role,kyc:u.kycStatus,joined:day(u.createdAt)||today(),bank:u.bank?u.bank.name+' ••'+(u.bank.accountLast4||String(u.bank.account||'').slice(-4)):null,bankAcct:u.bank?{bank:u.bank.name,number:u.bank.account||'',name:u.bank.accountName}:null,acct:u.bank&&u.bank.account,aname:u.bank&&u.bank.accountName,coop:u.coop?{member:true,agreedAt:isoT(u.coop.agreedAt),terms:u.coop.termsVersion,no:u.coop.number}:null,shop:u.shop,area:u.area,route:'',limit:0,consigned:0,sold:0,remitted:0,status:u.status,mustChange:u.mustChangePassword,created:true});
+const mapHold=h=>(regTs(h.ref+'p',h.paid_at||h.paidAt),regTs(h.ref+'s',h.signed_at||h.signedAt),regTs(h.ref+'c',h.issued_at||(h.certificate&&h.certificate.issuedAt)),{id:h.id,ref:h.ref,userId:h.user_id||(LV.me&&LV.me.id),storeId:h.package_id||(h.package&&h.package.id)||h.package,slots:h.units,status:h.status,signedName:h.signed_name||h.signedName,signedAt:day(h.signed_at||h.signedAt),paidAt:day(h.paid_at||h.paidAt),issuedAt:day(h.issued_at||(h.certificate&&h.certificate.issuedAt)),certNo:h.cert_no||(h.certificate&&h.certificate.number)||null,activeSince:day(h.active_since||h.activeSince),method:h.method||'transfer',gatewayVerified:!!h.payment_verified&&h.method!=='transfer',listed:false,_reservedUntil:h.reserved_until||h.reservedUntil});
+const mapDel=(d,toId)=>({id:d.id,code:d.code,toType:'shop',toId:toId||(d.store&&d.store.id),holdingId:d.holding_id||d.holdingId||null,kind:d.kind==='store_order'?undefined:d.kind,cycle:d.cycle!=null?d.cycle-1:undefined,lines:(d.lines||[]).map(l=>({sku:l.sku,qty:l.qty})),status:d.stage,driver:d.driver||'',auto:d.auto!==false,_value:d.value,log:(d.log&&d.log.length?d.log.map(x=>[x.stage,isoT(x.at)]):[[0,isoT(d.createdAt)]].concat(d.deliveredAt?[[3,isoT(d.deliveredAt)]]:[])),otp:''});
+const txStatus=(t)=>t.status==='processing'?'processing':t.status==='rejected'?'declined':t.type==='withdrawal'?'sent':'paid';
+const mapTx=t=>({id:t.id,userId:t.user_id,date:day(t.created_at),type:t.type==='adjustment'?'payout':t.type,amount:t.status==='rejected'?0:Number(t.amount),req:t.status==='rejected'?-Number(t.amount):undefined,memo:t.memo||'',status:txStatus(t),_wid:t.withdrawal_id});
+const mapRem=(r,storeId)=>({id:r.id,ref:r.ref,userId:r.store_user_id||storeId,date:isoT(r.created_at),settledAt:isoT(r.confirmed_at),amount:Number(r.amount),status:r.status==='rejected'?'declined':r.status});
+function applyCycles(u,cycles){u._cycles=(cycles||[]).map(c=>({k:c.k,start:+new Date(c.start_at),auditAt:+new Date(c.audit_at),restockAt:+new Date(c.restock_at),audited:c.audited_value,auditedAt:c.audited_at,recAt:c.reconciled_at,released:c.restock_released_at}));
+ u._cycles.forEach(c=>{if(c.auditedAt||c.recAt)S.recs[u.id+':'+c.k]={shopId:u.id,k:c.k,auditAt:isoT(c.auditedAt),recAt:isoT(c.recAt),sold:Number(c.audited||0)};});}
+/* store cycles come from the server */
+const _cycOf=cycOf;cycOf=function(u,at){if(!u||!u._cycles)return _cycOf(u,at);if(!u._cycles.length)return null;const c=u._cycles.reduce((a,b)=>b.k>a.k?b:a);return {k:c.k,start:c.start,auditAt:c.auditAt,restockAt:c.restockAt};};
+function applyAccount(u,a){u.consigned=a.stockReceived;u.sold=a.auditedSales;u.remitted=a.remittanceConfirmed;u.limit=a.stockReceived;}
+const ACT_TEXT={'member.registered':'registered and joined the cooperative','units.reserved':'reserved units','units.confirmed':'units confirmed','payment.confirmed':'confirmed a payment','package.opened':'opened a package','delivery.delivered':'delivery completed','store.audited':'recorded a day-28 audit','remittance.confirmed':'confirmed a remittance','store.reconciled':'reconciled a store account','payout.run':'ran a payout','wallet.withdrawal_paid':'paid a withdrawal','admin.signed_in':'signed in to the console','kyc.verified':'identity verified by Smile ID'};
+const actText=a=>{let d={};try{d=JSON.parse(a.detail||'{}');}catch(e){}return (ACT_TEXT[a.action]||a.action.replace(/[._]/g,' '))+(d.ref?' · '+d.ref:d.code?' · '+d.code:d.name?' · '+d.name:'');};
+
+async function loadPublic(){const [t,p]=await Promise.all([API('/api/terms'),API('/api/packages')]);applyTerms(t);S.stores=p.packages.map(mapPkg);}
+async function loadMember(){const m=LV.me;const u=mapUser(m);S.users=[u];S.session={userId:u.id};
+ if(m.role==='investor'){const [h,w]=await Promise.all([API('/api/holdings'),API('/api/me/wallet')]);S.holdings=h.holdings.map(mapHold);S.tx=w.transactions.map(mapTx);
+  const ds=await Promise.all(h.holdings.filter(x=>['active','redeem','closed'].includes(x.status)).map(x=>API('/api/holdings/'+x.id+'/deliveries').then(r=>r.deliveries.map(d=>Object.assign(mapDel(d,null),{holdingId:x.id,toType:'store',toId:x.package.id})))));S.deliveries=ds.flat();}
+ else{const [a,ds,rm,cy,sl]=await Promise.all([API('/api/store/account'),API('/api/store/deliveries'),API('/api/store/remittances'),API('/api/store/cycles'),API('/api/store/sales')]);
+  applyAccount(u,a.account);applyCycles(u,cy.cycles);a.packages.forEach(p=>{const s=S.stores.find(x=>x.id===p.id);if(s)s.shopId=u.id;else S.stores.push(Object.assign(mapPkg(p),{shopId:u.id}));});
+  S.deliveries=ds.deliveries.map(d=>mapDel(d,u.id));await Promise.all(S.deliveries.filter(d=>d.status===2).map(d=>API('/api/store/deliveries/'+d.id).then(x=>{d.otp=x.delivery.deliveryCode||''}).catch(()=>{})));S.remits=rm.remittances.map(r=>mapRem(r,u.id));S.sreps=sl.sales.map(x=>({id:'sr'+x.id,userId:u.id,amount:Number(x.amount),at:isoT(x.created_at),status:'submitted'}));}}
+async function loadAdmin(){const q=s=>API(s).catch(()=>null);
+ const [us,pk,hs,pays,ds,st,rm,pr,wd,wt,em,act,adm,sec,ev,tm,kc,rd]=await Promise.all(['/api/admin/users','/api/admin/packages','/api/admin/holdings','/api/admin/payments','/api/admin/deliveries?full=1&limit=1000','/api/admin/stores','/api/admin/remittances','/api/admin/payouts','/api/admin/withdrawals','/api/admin/wallet-tx','/api/admin/emails?limit=500','/api/admin/activity?limit=200','/api/admin/admins','/api/admin/admins/security','/api/admin/admins/login-events','/api/admin/settings/terms','/api/admin/kyc','/api/admin/redemptions'].map(q));
+ if(tm)applyTerms({terms:tm.terms,escrow:tm.escrow});const up=await q('/api/admin/settings/unit-package');if(up)applyTerms({terms:tm.terms,unitPackage:up.unitPackage});
+ S.users=(us?us.users:[]).map(mapUser);S.users.push({id:'a1',name:LV.admin.name,email:LV.admin.email,role:'admin',kyc:'verified'});S.session={userId:'a1'};
+ S.stores=(pk?pk.packages:[]).map(mapPkg);
+ const payBy={};(pays?pays.payments:[]).forEach(p=>{if(['pending_review','initialized'].includes(p.status)&&!payBy[p.ref])payBy[p.ref]=p.id;});
+ S.holdings=(hs?hs.holdings:[]).filter(h=>h.status!=='cancelled').map(h=>Object.assign(mapHold(h),{_payId:payBy[h.ref]}));
+ S.deliveries=(ds?ds.deliveries:[]).map(d=>mapDel(d));
+ (st?st.stores:[]).forEach(x=>{const u=S.users.find(y=>y.id===x.id);if(u){applyAccount(u,x.account);}});
+ const det=await Promise.all((st?st.stores:[]).map(x=>q('/api/admin/stores/'+x.id)));
+ det.filter(Boolean).forEach(d=>{const u=S.users.find(y=>y.id===d.store.id);if(!u)return;applyCycles(u,d.cycles);d.sales.forEach(x=>S.sreps.push({id:'sr'+x.id,userId:u.id,amount:Number(x.amount),at:isoT(x.created_at),status:'submitted'}));});
+ S.remits=(rm?rm.remittances:[]).map(r=>mapRem(r));
+ S.payouts=(pr?pr.runs:[]).map(r=>({id:r.id,storeId:r.package_id,cycle:r.cycle_no,date:day(r.created_at),profit:Number(r.profit),reserveAdd:Number(r.reserve_added),reserveDraw:Number(r.reserve_used),pool:Number(r.investors_total),perSlot:Number(r.per_unit),target:Math.round(S.st.slotPrice*S.st.qRate),slots:r.units}));
+ S.tx=(wt?wt.transactions:[]).map(mapTx);
+ S.outbox=(em?em.emails:[]).map(e=>({id:e.id,ts:+new Date(e.created_at),to:e.to_email,name:e.to_name||e.to_email,subject:e.subject,body:e.subject,code:e.ref,_status:e.status}));
+ S.log=(act?act.activity:[]).map(a=>({t:day(a.created_at),text:actText(a)}));
+ const kcBy={};(kc?kc.checks:[]).forEach(k=>{if(!kcBy[k.user_id])kcBy[k.user_id]=k;});
+ S.users.forEach(u=>{const k=kcBy[u.id];if(k){let ac={};try{ac=JSON.parse(k.actions||'{}');}catch(e){}u.smile={job:k.id,product:k.product==='biometric_kyc'?'bio':k.product==='enhanced_kyc'?'enh':'doc',idType:k.id_type||'NIN',idNo:'—',score:k.confidence||0,checks:{found:k.status!=='failed',name:k.status==='verified',dob:k.status==='verified',live:k.product==='biometric_kyc',face:k.status==='verified'},result:k.status==='verified'?'Verified':'Needs review',code:k.result_code||'—',ts:+new Date(k.completed_at||k.created_at),env:''};}});
+ S.adm={admins:(adm?adm.admins:[]).map(a=>({id:a.id,name:a.name,email:a.email,role:a.role,status:a.status,last:a.lastLoginAt?+new Date(a.lastLoginAt):null,created:day(a.createdAt)})),twofa:!!(sec&&sec.security.twofa),timeout:sec?sec.security.timeoutMinutes:60,maxFail:sec?sec.security.maxFailures:5,lockMin:sec?sec.security.lockMinutes:15,hist:(ev?ev.events:[]).map(e=>({t:+new Date(e.created_at),email:e.email,ok:!!e.ok,note:e.note||''})),fails:{},v2:1,v3:1};
+ S.adminAuth={id:LV.admin.id,at:Date.now(),exp:Date.now()+S.adm.timeout*60000};
+ LV.redemptions=rd?rd.redemptions:[];}
+async function liveLoad(){await loadPublic();
+ const area=route();
+ if(area.startsWith('admin')||area==='console'){try{const a=await API('/api/admin/auth/me');LV.admin=a.admin;LV.perms=a.permissions;await loadAdmin();}catch(e){LV.admin=null;}}
+ else{try{const m=await API('/api/me');LV.me=m.user;await loadMember();}catch(e){LV.me=null;}}}
+async function refresh(msg){try{await liveLoad();}catch(e){toast(e.message);}render();if(msg)toast(msg);}
+window.liveRefresh=refresh;
+const act=(fn,msg)=>async(...a)=>{if(LV.busy)return;LV.busy=true;try{const out=await fn(...a);if(out!==false){closeModal();await refresh(typeof msg==='function'?msg(out):msg);}}catch(e){toast(e.message);}finally{LV.busy=false;}};
+const val=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
+
+/* -------- routing and access -------- */
+const _render=render;
+render=function(){const r=route();
+ if(LV.booting)return;
+ if((r.startsWith('me')||r.startsWith('shop'))&&!LV.me){location.replace('#login');return;}
+ if(r.startsWith('me')&&LV.me&&LV.me.role!=='investor'){location.replace('#shop');return;}
+ if(r.startsWith('shop')&&LV.me&&LV.me.role!=='retailer'){location.replace('#me');return;}
+ if(r.startsWith('admin')&&!LV.admin){location.replace('#console');return;}
+ if((LV.me&&(r.startsWith('me')||r.startsWith('shop'))&&!S.session)||(LV.admin&&r.startsWith('admin')&&!S.adm)){refresh();return;}
+ if(r==='login'&&LV.me){location.replace(LV.me.role==='retailer'?'#shop':'#me');return;}
+ _render();};
+protoBar=function(){return '';};
+admAuthed=function(){return !!LV.admin;};
+admMe=function(){return LV.admin&&{id:LV.admin.id,name:LV.admin.name,email:LV.admin.email,role:LV.admin.role,status:'active'};};
+window.addEventListener('hashchange',()=>{const r=route();const needAdmin=r.startsWith('admin'),needMem=r.startsWith('me')||r.startsWith('shop');
+ if((needAdmin&&!LV.admin&&!LV.triedAdmin)||(needMem&&!LV.me&&!LV.triedMe)){LV.triedAdmin=LV.triedAdmin||needAdmin;LV.triedMe=LV.triedMe||needMem;refresh();}});
+
+/* -------- member sign in, password reset, sign out -------- */
+pLogin=function(){return `<section class="band" style="background:var(--cream)"><div class="wrap" style="max-width:460px"><div class="card stack" style="padding:28px;gap:14px"><h2 style="font-size:28px">Log in</h2><p class="muted small">Sign in to your Tafiki account.</p>
+ <div class="field"><label for="li-e">Email</label><input class="input" id="li-e" type="email" autocomplete="username"></div>
+ <div class="field"><label for="li-p">Password</label><input class="input" id="li-p" type="password" autocomplete="current-password"></div>
+ <button class="btn dark" data-a="liLogin">Log in</button><button class="link small" style="align-self:center" data-a="liForgot">Forgot your password?</button>
+ <p class="small muted" style="text-align:center">New here? <a href="#register" class="link">Create an account</a></p></div></div></section>`;};
+A.liLogin=act(async()=>{const r=await API('/api/auth/login',{method:'POST',body:{email:val('li-e'),password:val('li-p')}});LV.me=r.user;await liveLoad();location.hash=r.user.role==='retailer'?'#shop':'#me';return false;});
+A.liForgot=()=>openModal(`${mh('Reset your password','We will email you a secure link.')}<div class="modal-b"><div class="field"><label for="fp-e">Email</label><input class="input" id="fp-e" type="email" value="${esc(val('li-e'))}"></div></div><div class="modal-f"><button class="btn ghost" data-a="close">Cancel</button><button class="btn dark" data-a="liForgotGo">Send link</button></div>`);
+A.liForgotGo=act(async()=>{await API('/api/auth/password/forgot',{method:'POST',body:{email:val('fp-e')}});},'If that email has an account, a reset link is on its way.');
+const resetPage=()=>`<section class="band" style="background:var(--cream)"><div class="wrap" style="max-width:460px"><div class="card stack" style="padding:28px;gap:14px"><h2 style="font-size:26px">Choose a new password</h2><div class="field"><label for="rp-1">New password</label><input class="input" id="rp-1" type="password" autocomplete="new-password"></div><div class="field"><label for="rp-2">Confirm new password</label><input class="input" id="rp-2" type="password" autocomplete="new-password"></div><button class="btn dark" data-a="rpGo">Save password</button></div></div></section>`;
+A.rpGo=act(async()=>{if(val('rp-1')!==val('rp-2'))throw new Error('The passwords do not match.');const t=(location.hash.split('token=')[1]||'').split('&')[0];await API('/api/auth/password/reset',{method:'POST',body:{token:t,password:val('rp-1')}});location.hash='#login';},'Password saved. You can log in now.');
+A.logout=act(async()=>{await API('/api/auth/logout',{method:'POST'});LV.me=null;S.session=null;location.hash='#home';},'Signed out.');
+const _pLoginBase=pLogin;
+const _publicShellL=publicShell;publicShell=function(r){if(r.startsWith('reset')){LV.reset=true;const h=_publicShellL('login');LV.reset=false;return h;}if(r.startsWith('pay-result'))return _publicShellL('home');return _publicShellL(r);};
+const _pLoginL=pLogin;pLogin=function(){return LV.reset?resetPage():_pLoginL();};
+
+/* -------- registration: creates the account (cooperative membership), then Smile ID -------- */
+A.reg3=act(async()=>{LV.regging=true;const d=REG.d;if(!document.getElementById('r-ok').checked)throw new Error('Tick the box to agree with the Terms and Conditions.');
+ const pw=val('r-pw');if(pw.length<8||!/\d/.test(pw)||!/[A-Za-z]/.test(pw))throw new Error('Choose a password of at least 8 characters with letters and a number.');
+ const body={role:REG.path,firstName:d.first,lastName:d.last,email:d.email,phone:d.phone,password:pw,city:val('r-city')||undefined,dob:val('r-dob')||undefined,agreeTerms:true,termsVersion:typeof TERMS_V2!=='undefined'?TERMS_V2:undefined};
+ if(REG.path==='retailer'){body.shop=/^FOODCORE\s/i.test(d.shop||'')?d.shop:'FOODCORE '+(d.shop||'');body.area=d.route||d.shop;}
+ if(d.bank&&d.acct)body.bank={name:d.bank,account:d.acct,accountName:d.aname};
+ const r=await API('/api/auth/register',{method:'POST',body});LV.me=r.user;REG={step:1,path:'investor',d:{}};await liveLoad();
+ location.hash=r.user.role==='retailer'?'#shop':'#me';toast('Account created. Welcome to FOODCORE Multipurpose Cooperative.');setTimeout(()=>liveKyc(true),600);return false;});
+const _pRegL=pRegister;pRegister=function(){let h=_pRegL();if(REG.step!==4)return h;
+ h=h.replace(/<div class="sm-badge">(?:(?!<div class="sm-badge">)[\s\S])*?Most checks finish in under a minute\.<\/small><\/div><\/div>/,'');
+ h=h.replace(/<div class="field"><label for="r-idt">[\s\S]*?<p class="sm-demo">[\s\S]*?<\/p>/,`<div class="sm-badge"><span>${ic('shield')}</span><div><b>Verified by Smile ID</b><small>After you create your account, Smile ID's secure screen opens to check your ID against the official government record and match it to a quick selfie. Most checks finish in under a minute.</small></div></div><div class="field"><label for="r-dob">Date of birth</label><input class="input" id="r-dob" type="date" value="${esc(REG.d.dob||'')}"></div>`);
+ return h.replace('<div class="field"><label for="r-city">','<div class="field"><label for="r-pw">Create a password</label><input class="input" id="r-pw" type="password" autocomplete="new-password" placeholder="At least 8 characters with a number"></div><div class="field"><label for="r-city">');};
+/* Smile ID hosted web integration */
+async function liveKyc(quiet){try{const k=await API('/api/me/kyc/start',{method:'POST',body:{product:'biometric_kyc'}});
+  await new Promise((ok,no)=>{if(window.SmileIdentity)return ok();const s=document.createElement('script');s.src='https://cdn.smileidentity.com/inline/v1/js/script.min.js';s.onload=ok;s.onerror=()=>no(new Error('Could not load Smile ID. Try again from your dashboard.'));document.head.appendChild(s);});
+  window.SmileIdentity({token:k.token,product:k.product,callback_url:k.callbackUrl,environment:k.environment==='live'?'live':'sandbox',partner_details:{partner_id:k.partnerId,name:'Tafiki',logo_url:location.origin+'/img/foodcore-mark.png',policy_url:location.origin+'/#terms',theme_color:'#1D4107'},
+   onSuccess:()=>{toast('Thank you. Your identity check has been submitted.');setTimeout(()=>refresh(),4000);},onClose:()=>{},onError:e=>toast((e&&e.message)||'The identity check did not complete. You can try again from your dashboard.')});}
+ catch(e){if(!quiet)toast(e.message);}}
+A.smSelfie=()=>liveKyc(false);A.smStart=()=>liveKyc(false);
+
+/* -------- buying units -------- */
+A.fsign=act(async()=>{const sig=val('f-sig');const r=await API('/api/holdings',{method:'POST',body:{packageId:FLOW.storeId,units:FLOW.slots,signedName:sig,agree:true}});
+ const h=mapHold(r.holding);S.holdings.push(h);FLOW.holdId=h.id;FLOW.step=4;FLOW.method='card';investModal();return false;});
+A.checkout=act(async d=>{const r=await API('/api/holdings/'+d.id+'/pay',{method:'POST',body:{method:FLOW.method==='debit'?'debit':'card'}});location.href=r.authorizationUrl;return false;});
+A.fpaid=act(async d=>{await API('/api/holdings/'+d.id+'/pay',{method:'POST',body:{method:'transfer'}});await API('/api/holdings/'+d.id+'/transfer-sent',{method:'POST'});},'Thanks. We will confirm your transfer and update your units.');
+A.resumePay=d=>{const h=S.holdings.find(x=>x.id===d.id);FLOW={storeId:h.storeId,step:4,slots:h.slots,holdId:h.id,method:'card'};investModal();};
+A.cancelYes=act(async d=>{await API('/api/holdings/'+d.id,{method:'DELETE'});},'Reservation released.');
+A.redeem=act(async d=>{await API('/api/me/holdings/'+d.id+'/redeem',{method:'POST'});},'Redemption requested. It settles after 90 days’ notice.');
+A.wdGo=act(async()=>{const v=+val('wd');await API('/api/me/wallet/withdrawals',{method:'POST',body:{amount:v}});},'Withdrawal requested. It is usually paid within two working days.');
+async function payReturn(){const ref=(location.hash.split('ref=')[1]||'').split('&')[0];if(!ref)return;try{const r=await API('/api/holdings/payments/'+encodeURIComponent(decodeURIComponent(ref))+'/verify');await refresh();location.hash='#me-slots';toast(r.payment.status==='success'?'Payment received. Thank you.':r.payment.status==='failed'?'The payment did not go through. You can try again.':'We are confirming your payment.');}catch(e){toast(e.message);location.hash='#me';}}
+
+/* -------- FOODCORE store portal -------- */
+A.reportSale=act(async()=>{const v=+val('sale');if(!(v>0))throw new Error('Enter the value you sold.');await API('/api/store/sales',{method:'POST',body:{amount:Math.round(v)}});},'Sales submitted.');
+A.remit=act(async()=>{const u=me(),v=dueFx(u);if(v<=0)throw new Error('Nothing is due right now.');await API('/api/store/remittances',{method:'POST',body:{amount:Math.round(v)}});},'Remittance reported. Tafiki will confirm it shortly.');
+
+/* -------- console sign in (separate from the website) -------- */
+A.conLogin=act(async()=>{const r=await API('/api/admin/auth/login',{method:'POST',body:{email:val('con-email'),password:val('con-pw')}});
+ if(r.step==='code'){window.CON={step:2,email:val('con-email'),ticket:r.ticket};render();return false;}LV.admin=r.admin;LV.perms=r.permissions;window.CON={};await loadAdmin();location.hash='#'+(window.CON_NEXT||'admin');return false;});
+A.conCode=act(async()=>{const r=await API('/api/admin/auth/verify',{method:'POST',body:{ticket:window.CON.ticket,code:val('con-code')}});LV.admin=r.admin;LV.perms=r.permissions;window.CON={};await loadAdmin();location.hash='#'+(window.CON_NEXT||'admin');return false;});
+A.conOut=act(async()=>{await API('/api/admin/auth/logout',{method:'POST'});LV.admin=null;location.hash='#console';},'Signed out.');
+const _conPage=consolePage;consolePage=function(){return _conPage().replace(/<p class="con-demo">[\s\S]*?<\/p>/g,'');};
+
+/* -------- console actions -------- */
+A.confirmPay=act(async d=>{const h=S.holdings.find(x=>x.id===d.id);if(!h._payId)throw new Error('No bank transfer is waiting for this reservation. Card and bank-debit payments confirm automatically.');await API('/api/admin/payments/'+h._payId+'/confirm',{method:'POST'});},'Payment confirmed.');
+A.rejectPay=act(async d=>{const h=S.holdings.find(x=>x.id===d.id);if(!h._payId)throw new Error('No bank transfer is waiting for this reservation.');await API('/api/admin/payments/'+h._payId+'/reject',{method:'POST',body:{reason:'Transfer not found in the escrow account'}});},'Payment rejected. The member has been emailed.');
+A.kyc=act(async d=>{await API('/api/admin/users/'+d.id,{method:'PATCH',body:{kycStatus:d.v}});},d=>'Identity '+(d&&d.changed?'updated':'saved')+'.');
+A.kycM=d=>A.kyc(d);
+A.approvePkg=act(async d=>{await API('/api/admin/packages/'+d.id+'/open',{method:'POST',body:{}});},'Package opened. Stock deliveries have been created.');
+A.fxAdv=act(async d=>{await API('/api/admin/deliveries/'+d.id+'/advance',{method:'POST'});},'Delivery moved to the next stage.');
+A.fxForm=d=>{const x=S.deliveries.find(y=>y.id===d.id);if(x.status!==2)return toast('The order must be in transit first.');fxModal(`<div class="mi">${ic('truck')}</div><h2>Complete Order #${esc(x.code)}</h2><p class="ad-sub">Enter the 6-digit delivery code the store manager gives the driver after counting the bags.</p><input class="ad-in" id="dc" inputmode="numeric" maxlength="6" placeholder="000000" style="text-align:center;font-size:22px;letter-spacing:.3em"><div class="acts"><button class="fx-btn light" data-a="close">Cancel</button><button class="fx-btn" data-a="dcGo" data-id="${x.id}">Complete Delivery</button></div>`);};
+A.dcGo=act(async d=>{await API('/api/admin/deliveries/'+d.id+'/complete',{method:'POST',body:{code:val('dc')}});},'Delivery completed.');
+A.fxOverrideGo=act(async d=>{const reason=val('ov-r')||prompt('Reason for completing without the delivery code (at least 10 characters):')||'';await API('/api/admin/deliveries/'+d.id+'/override',{method:'POST',body:{reason}});},'Delivery completed by override. The reason is recorded.');
+A.fxDelayGo=act(async d=>{const h=+val('dl-h')||6;await API('/api/admin/deliveries/'+d.id+'/delay',{method:'POST',body:{minutes:Math.round(h*60),reason:val('dl-r')}});},'Delay recorded.');
+A.fxAutoT=act(async d=>{const x=S.deliveries.find(y=>y.id===d.id);await API('/api/admin/deliveries/'+d.id,{method:'PATCH',body:{auto:!x.auto}});},'Updated.');
+A.auditOk=act(async d=>{const v=+val('aud');await API('/api/admin/stores/'+d.id+'/audit',{method:'POST',body:{auditedValue:Math.round(v)}});},'Audit recorded.');
+A.reconcile=act(async d=>{await API('/api/admin/stores/'+d.id+'/reconcile',{method:'POST'});},'Account reconciled. The restock is released on day 30.');
+A.fxRemitOk=act(async d=>{await API('/api/admin/remittances/'+d.id+'/confirm',{method:'POST'});},'Remittance confirmed.');
+A.runPayoutGo=act(async d=>{await API('/api/admin/payouts/'+d.id,{method:'POST',body:{profit:Math.round(+d.p)}});},'Payout made. Unit holders’ wallets have been credited.');
+A.fxWdOk=act(async d=>{const t=S.tx.find(x=>x.id===d.id);const ref=prompt('Bank transfer reference for this withdrawal:');if(!ref)return false;await API('/api/admin/withdrawals/'+t._wid+'/pay',{method:'POST',body:{transferReference:ref}});},'Withdrawal marked as paid.');
+A.sendWd=d=>A.fxWdOk(d);
+A.fxWdNo=act(async d=>{const t=S.tx.find(x=>x.id===d.id);await API('/api/admin/withdrawals/'+t._wid+'/reject',{method:'POST',body:{reason:'Declined by Tafiki'}});},'Withdrawal declined. The money is back in the wallet.');
+A.approveRedeem=act(async d=>{const r=(LV.redemptions||[]).find(x=>x.holding_id===d.id&&x.status==='requested');if(!r)throw new Error('No redemption request found for these units.');await API('/api/admin/redemptions/'+r.id+'/settle',{method:'POST'});},'Redemption settled into the wallet.');
+A.newRunGo=act(async()=>{const [,id]=val('nr-to').split(':');const items=[0,1,2].map(i=>({sku:val('nr-s'+i),qty:+val('nr-q'+i)})).filter(l=>l.sku&&l.qty>0);await API('/api/admin/deliveries',{method:'POST',body:{storeUserId:id,items}});},'Store order created.');
+A.saveCfg=act(async()=>{const n=id=>+val('c-'+id);await API('/api/admin/settings/terms',{method:'PUT',body:{terms:{unitPrice:n('price'),unitsPerPackage:n('units'),targetPerCycle:n('rate')/100,cycleDays:n('days'),coverFloor:n('cover')/100,reservePct:n('reserve')/100,capPct:n('cap')/100,minHoldMonths:n('lock')},escrow:{bank:val('c-bank'),accountNumber:val('c-acct')}}});},'Settings saved.');
+A.umSave=act(async d=>{const v=id=>{const e=document.getElementById('ue-'+id);return e?e.value.trim():undefined;};const b={name:v('name'),email:v('email'),phone:v('phone'),kycStatus:v('kyc')};if(v('shop')!==undefined){b.shop=v('shop');b.area=v('area');}else b.city=v('city');if(v('bank')!==undefined)b.bank={name:v('bank')||'',account:v('acct')||'',accountName:v('aname')||''};const r=await API('/api/admin/users/'+d.id,{method:'PATCH',body:b});return r;},'Details saved. The member has been notified.');
+A.umLink=act(async d=>{await API('/api/admin/users/'+d.id+'/reset-link',{method:'POST'});},'Reset link sent.');
+A.umTemp=act(async d=>{const r=await API('/api/admin/users/'+d.id+'/temporary-password',{method:'POST'});setTimeout(()=>fxModal(`<div class="mi">${ic('key')}</div><h2>Temporary Password</h2><p class="ad-sub">Shown only once. Share it privately.</p><code class="um-pw">${esc(r.temporaryPassword)}</code><div class="acts"><button class="fx-btn" data-a="close">Done</button></div>`),300);});
+A.admPw=act(async()=>{if(val('ap-new')!==val('ap-new2'))throw new Error('The new passwords do not match.');await API('/api/admin/auth/me/password',{method:'POST',body:{current:val('ap-cur'),next:val('ap-new')}});},'Password updated.');
+A.admSec=act(async()=>{await API('/api/admin/admins/security',{method:'PUT',body:{twofa:document.getElementById('as-2fa').checked,timeoutMinutes:+val('as-to'),maxFailures:+val('as-mf')}});},'Login security saved.');
+A.admToggle=act(async d=>{const a=S.adm.admins.find(x=>x.id===d.id);await API('/api/admin/admins/'+d.id+'/status',{method:'POST',body:{status:a.status==='active'?'disabled':'active'}});},'Administrator updated.');
+const showPw=(a,t,note)=>setTimeout(()=>fxModal(`<div class="mi">${ic('key')}</div><h2>Temporary Password</h2><p class="ad-sub">${esc(note)}</p><dl><dt>Administrator</dt><dd>${esc(a.name)}</dd><dt>Email</dt><dd>${esc(a.email)}</dd><dt>Temporary password</dt><dd><code class="um-pw">${esc(t)}</code></dd></dl><p class="ad-sub">Shown only once.</p><div class="acts"><button class="fx-btn" data-a="close">Done</button></div>`),300);
+A.admSave=act(async d=>{const b={name:val('ae-n'),email:val('ae-e'),role:val('ae-r')};if(d.id){await API('/api/admin/admins/'+d.id,{method:'PATCH',body:b});return;}const r=await API('/api/admin/admins',{method:'POST',body:b});showPw(r.admin,r.temporaryPassword,'Share this privately. They will be asked to change it after signing in.');},'Administrator saved.');
+A.admReset=act(async d=>{const a=S.adm.admins.find(x=>x.id===d.id);const r=await API('/api/admin/admins/'+d.id+'/reset-password',{method:'POST'});showPw(a,r.temporaryPassword,'The previous password no longer works.');});
+/* the role checks shown in the console follow the server's permissions */
+if(typeof admCan==='function'){const _can=admCan;admCan=function(a){if(!LV.admin)return false;if(LV.admin.role==='Super Admin')return true;if(RO_OK.has(a))return true;const g=ACT_GROUP[a];return !!g&&LV.perms.includes(g);};}
+
+/* -------- start -------- */
+LV.booting=true;
+document.getElementById('app').innerHTML='<div style="min-height:70vh;display:grid;place-items:center;font:500 15px Inter,system-ui,sans-serif;color:#4A5C40">Loading Tafiki…</div>';
+liveLoad().catch(e=>{console.error(e);}).finally(()=>{LV.booting=false;LV.triedMe=true;LV.triedAdmin=route().startsWith('admin');
+ if(route().startsWith('pay-result'))payReturn();render();});
+}
+
+{const _fxTs=fxTs;fxTs=function(t,key,step){if(window.LIVE&&LV.ts&&key!=null&&LV.ts[key])return LV.ts[key];return _fxTs(t,key,step)};}
+if(!window.LIVE)render();
 </script>
 </body>
 </html>
