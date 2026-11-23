@@ -45,9 +45,11 @@ test('store sees its code; driver link completes only with the right code', asyn
   const sd = (await store.get('/api/store/deliveries/' + delivery.id)).body.delivery; assert.match(sd.deliveryCode, /^\d{6}$/);
   const full = (await logi.get('/api/admin/deliveries/' + delivery.id)).body.delivery; const token = full.driverLink.split('t=')[1];
   const info = await agent(app).get('/api/driver/' + token); assert.equal(info.body.delivery.store, 'FOODCORE Bodija'); assert.equal(info.body.delivery.code, delivery.code);
+  global.__token = token;
   assert.equal((await agent(app).post('/api/driver/' + token + '/complete').send({ code: '000000' === sd.deliveryCode ? '111111' : '000000' })).status, 400);
   const ok = await agent(app).post('/api/driver/' + token + '/complete').send({ code: sd.deliveryCode }); assert.equal(ok.status, 200);
   assert.equal((await store.get('/api/store/deliveries/' + delivery.id)).body.delivery.deliveryCode, undefined);
+  assert.equal((await agent(app).get('/api/driver/' + token)).body.delivery.store, undefined);
   const acc = (await store.get('/api/store/account')).body.account; assert.equal(acc.stockReceived, 4000000); assert.equal(acc.onShelf, 4000000); assert.equal(acc.cycle.k, 1);
   assert.match((await lastEmail('ada@example.com')).subject, /Delivered/);
 });
@@ -55,21 +57,26 @@ test('store sees its code; driver link completes only with the right code', asyn
 test('day-28 audit, remittance, reconciliation, then restock', async () => {
   await store.post('/api/store/sales').send({ amount: 1500000, note: 'Week sales' });
   assert.equal((await logi.post('/api/admin/stores/' + storeId + '/audit').send({ auditedValue: 1500000 })).status, 403);
+  assert.equal((await aud.post('/api/admin/stores/' + storeId + '/audit').send({ auditedValue: 1600000 })).status, 400); // before day 28
+  await db('store_cycles').where({ store_user_id: storeId, k: 1 }).update({ audit_at: new Date(Date.now() - 1000) });
   assert.equal((await aud.post('/api/admin/stores/' + storeId + '/audit').send({ auditedValue: 9000000 })).status, 400);
   assert.equal((await aud.post('/api/admin/stores/' + storeId + '/audit').send({ auditedValue: 1600000 })).status, 200);
   let acc = (await store.get('/api/store/account')).body.account; assert.equal(acc.remittanceDue, 1600000); assert.equal(acc.onShelf, 2400000);
   assert.equal((await aud.post('/api/admin/stores/' + storeId + '/reconcile')).status, 400);
-  const rm = await store.post('/api/store/remittances').send({ amount: 1600000, bankReference: 'GTB-123' }); assert.match(rm.body.remittance.ref, /^RM-0001$/);
+  assert.equal((await store.post('/api/store/remittances').send({ amount: 1700000 })).status, 400);
+  const rm = await store.post('/api/store/remittances').send({ amount: 1600000, bankReference: 'GTB-123' });
+  assert.equal((await store.post('/api/store/remittances').send({ amount: 100 })).status, 400); assert.match(rm.body.remittance.ref, /^RM-0001$/);
   assert.equal((await aud.post('/api/admin/remittances/' + rm.body.remittance.id + '/confirm')).status, 200);
   acc = (await store.get('/api/store/account')).body.account; assert.equal(acc.remittanceDue, 0);
   await db('store_cycles').where({ store_user_id: storeId, k: 1 }).update({ restock_at: new Date(Date.now() - 1000) });
   assert.equal((await aud.post('/api/admin/stores/' + storeId + '/reconcile')).status, 200);
   const ds = (await logi.get('/api/admin/deliveries?kind=restock')).body.deliveries; assert.equal(ds.length, 1); assert.match(ds[0].code, /-R1$/);
+  assert.equal(ds[0].value, 1600000); // replaces exactly what was sold
   // restock delivered with an override starts cycle 2
   assert.equal((await logi.post('/api/admin/deliveries/' + ds[0].id + '/override').send({ reason: 'short' })).status, 400);
   assert.equal((await logi.post('/api/admin/deliveries/' + ds[0].id + '/override').send({ reason: 'Driver phone lost; store manager confirmed by call' })).status, 200);
   const cycles = (await store.get('/api/store/cycles')).body.cycles; assert.equal(cycles[0].k, 2);
-  acc = (await store.get('/api/store/account')).body.account; assert.equal(acc.stockReceived, 8000000); assert.equal(acc.onShelf, 6400000);
+  acc = (await store.get('/api/store/account')).body.account; assert.equal(acc.stockReceived, 5600000); assert.equal(acc.onShelf, 4000000); // back to the original level
 });
 
 test('manual store order and wrong-code lock', async () => {
@@ -83,8 +90,18 @@ test('manual store order and wrong-code lock', async () => {
   assert.equal((await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/complete').send({ code })).status, 200);
 });
 
+test('nothing sold means no restock, and the next cycle starts', async () => {
+  const c2 = await db('store_cycles').where({ store_user_id: storeId, k: 2 }).first();
+  await db('store_cycles').where({ id: c2.id }).update({ audit_at: new Date(Date.now() - 1000) });
+  assert.equal((await aud.post('/api/admin/stores/' + storeId + '/audit').send({ auditedValue: 0 })).status, 200);
+  await db('store_cycles').where({ id: c2.id }).update({ restock_at: new Date(Date.now() - 1000) });
+  assert.equal((await aud.post('/api/admin/stores/' + storeId + '/reconcile')).status, 200);
+  assert.equal((await logi.get('/api/admin/deliveries?kind=restock')).body.deliveries.length, 1);
+  assert.equal((await store.get('/api/store/cycles')).body.cycles[0].k, 3);
+});
+
 test('audit reminder emails at day 28', async () => {
-  await db('store_cycles').where({ store_user_id: storeId, k: 2 }).update({ audit_at: new Date(Date.now() - 1000) });
+  await db('store_cycles').where({ store_user_id: storeId, k: 3 }).update({ audit_at: new Date(Date.now() - 1000) });
   assert.equal(await ops.auditReminders(), 1); assert.match((await lastEmail('aud@tafiki.com')).subject, /audit due/i);
   assert.equal(await ops.auditReminders(), 0);
 });

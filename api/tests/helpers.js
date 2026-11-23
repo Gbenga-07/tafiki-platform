@@ -8,7 +8,13 @@ const { createApp } = require('../src/app');
 const pw = require('../src/lib/passwords');
 const { uuid } = require('../src/lib/util');
 async function setup() {
-  const k = knexLib({ ...require('../knexfile'), connection: { filename: ':memory:' }, pool: { min: 1, max: 1 } });
+  let k;
+  if (process.env.TEST_DB === 'mysql') { // run the same tests against MySQL/MariaDB: TEST_DB=mysql npm run test:mysql
+    const conn = { host: process.env.TEST_DB_HOST || '127.0.0.1', port: 3306, user: process.env.TEST_DB_USER || 'tafiki', password: process.env.TEST_DB_PASSWORD || 'testpass' };
+    const name = process.env.TEST_DB_NAME || 'tafiki_test';
+    const root = knexLib({ client: 'mysql2', connection: conn }); await root.raw('DROP DATABASE IF EXISTS ??', [name]); await root.raw('CREATE DATABASE ?? CHARACTER SET utf8mb4', [name]); await root.destroy();
+    k = knexLib({ client: 'mysql2', connection: { ...conn, database: name }, migrations: require('../knexfile').migrations });
+  } else k = knexLib({ ...require('../knexfile'), connection: { filename: ':memory:' }, pool: { min: 1, max: 1 } });
   setDb(k); await k.migrate.latest();
   const app = createApp();
   return { app, db: k };

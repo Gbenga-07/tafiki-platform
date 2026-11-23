@@ -120,6 +120,7 @@ async function recordAudit(storeUserId, value, actor) {
   const db = getDb(); const c = await db('store_cycles').where({ store_user_id: storeUserId }).orderBy('k', 'desc').first();
   if (!c || c.restock_released_at) throw bad('This store has no cycle waiting for an audit.');
   if (c.audited_at) throw bad(`Cycle ${c.k} has already been audited.`);
+  if (new Date(c.audit_at) > now()) throw bad(`The day-28 audit for cycle ${c.k} opens on ${new Date(c.audit_at).toDateString()}.`);
   const acc = await storeAccount(storeUserId);
   if (!(value >= 0) || value > acc.onShelf) throw bad(`The audited sales value must be between ₦0 and the ${N(acc.onShelf)} on the shelf.`);
   await db('store_cycles').where({ id: c.id }).update({ audited_value: Math.round(value), audited_at: now(), audited_by: actor.id });
@@ -130,6 +131,9 @@ async function recordAudit(storeUserId, value, actor) {
 }
 async function reportRemittance(store, amount, bankReference) {
   const db = getDb(); if (!(amount > 0)) throw bad('Enter the amount you paid.');
+  const acc = await storeAccount(store.id); const open = acc.remittanceDue - acc.remittancePending;
+  if (open <= 0) throw bad(acc.remittancePending ? 'Your earlier remittance is still being confirmed.' : 'There is no remittance due right now.');
+  if (amount > open) throw bad(`The amount due is ${N(open)}. Report the exact amount you paid, up to that figure.`);
   const c = await db('store_cycles').where({ store_user_id: store.id }).orderBy('k', 'desc').first();
   const id = uuid(); const ref = 'RM-' + String(await counters.next('remittance', 1)).padStart(4, '0');
   await db('remittances').insert({ id, ref, store_user_id: store.id, cycle_k: c ? c.k : null, amount: Math.round(amount), bank_reference: bankReference || null, status: 'pending' });
@@ -157,15 +161,26 @@ async function reconcile(storeUserId, actor) {
   return db('store_cycles').where({ id: c.id }).first();
 }
 // Restock: after reconciliation and on/after the restock date, each active holding's stock is sent again.
+// Restock: after reconciliation and on/after the restock date, the stock that was sold (audited sales) is replaced,
+// shared across the store's active holdings in proportion to their units. The shelf returns to its original level.
 async function releaseRestocks() {
-  const db = getDb(); let n = 0;
+  const db = getDb(); let n = 0; const pack = await getUnitPackage();
   const due = await db('store_cycles').whereNotNull('reconciled_at').whereNull('restock_released_at').where('restock_at', '<=', now());
   for (const c of due) {
     const pkgs = await db('packages').where({ store_user_id: c.store_user_id, stage: 'trading' });
     const hs = pkgs.length ? await db('holdings').whereIn('package_id', pkgs.map((p) => p.id)).whereIn('status', ['active', 'redeem']) : [];
-    for (const h of hs) { await createDelivery({ kind: 'restock', cycle: c.k, storeUserId: c.store_user_id, holdingId: h.id, packageId: h.package_id, lines: await linesForUnits(h.units), code: `SO-${h.ref.replace('FC-', '')}-R${c.k}` }, null); n++; }
+    const unitValue = pack.items.reduce((a, i) => a + i.bags * i.cost, 0);
+    const total = hs.reduce((a, h) => a + h.units * unitValue, 0);
+    const f = total ? Math.min(1, Number(c.audited_value || 0) / total) : 0;
+    let made = 0;
+    for (const h of hs) {
+      const lines = pack.items.map((i) => ({ sku: i.sku, name: i.name, size: i.size, brand: i.brand, qty: Math.round(i.bags * h.units * f), unit_cost: i.cost })).filter((l) => l.qty > 0);
+      if (!lines.length) continue;
+      await createDelivery({ kind: 'restock', cycle: c.k, storeUserId: c.store_user_id, holdingId: h.id, packageId: h.package_id, lines, code: `SO-${h.ref.replace('FC-', '')}-R${c.k}` }, null); made++; n++;
+    }
     await db('store_cycles').where({ id: c.id }).update({ restock_released_at: now() });
-    await activity.log(null, 'store.restock_released', { type: 'user', id: c.store_user_id }, { cycle: c.k, deliveries: hs.length });
+    if (!made) await ensureCycle(c.store_user_id, now()); // nothing sold: the next cycle starts straight away
+    await activity.log(null, 'store.restock_released', { type: 'user', id: c.store_user_id }, { cycle: c.k, deliveries: made, share: Math.round(f * 1000) / 10 + '%' });
   }
   return n;
 }
