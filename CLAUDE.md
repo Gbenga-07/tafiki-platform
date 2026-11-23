@@ -22,6 +22,7 @@ This repository runs tafiki.com: the public website, the investor portal, the FO
 2. **Test before live.** Use Paystack test keys (`sk_test_`), `SMILE_ENV=sandbox`, and leave `TERMII_API_KEY` and `SMTP_HOST` empty until the owner says, in his own words, to go live.
 3. **Money and data.** Never insert, edit or delete payments, holdings, wallet transactions, withdrawals or payouts by hand in the database, except on a database the owner has said is test data. Back up (`mysqldump`) before any reset or migration.
 4. **Ask first** before anything that cannot be undone: dropping a database, deleting files, changing DNS, firewall rules that could lock out SSH, or switching keys to live.
-5. **Stay in scope.** Do not change the investment terms, payout formula or legal text. Those are set in the console by the owner and confirmed by counsel.
+5. **Stay in scope.** Do not change the investment terms, payout formula, yearly membership fee or legal text. Those are set in the console by the owner and confirmed by counsel.
 6. After code changes, run `npm test` and keep it at 0 failures before restarting.
-7. Do not put the word "investor" in the store portal or store emails.
+7. The yearly cooperative membership fee (default ₦50,000) is charged only on a member's first stake payment of each membership year. It is never unit capital: it must not count toward capital, returns, payouts or redemptions, and it is non-refundable (see `api/src/lib/membership.js`).
+8. Do not put the word "investor" in the store portal or store emails.

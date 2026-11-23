@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const config = require('../config');
 const { getDb } = require('../db');
+const membership = require('./membership');
 const { HttpError, bad, now, addMinutes } = require('./util');
 const counters = require('./counters');
 const { getTerms } = require('./terms');
@@ -67,6 +68,9 @@ async function markPaymentSuccess(payment, { channel, raw, by, mustWin } = {}) {
   // Only the first request to mark this payment successful continues; parallel reports stop here.
   const won = await db('payments').where({ id: payment.id }).whereNotIn('status', ['success', 'refund_due']).update({ status: 'success', channel: channel || payment.channel, raw: raw ? JSON.stringify(raw).slice(0, 60000) : payment.raw, verified_at: now(), confirmed_by: by || null });
   if (!won) { if (mustWin) throw new HttpError(409, 'This payment has already been confirmed.'); return settle(payment.holding_id, actor); }
+  // The membership fee part is settled first: it is non-refundable, so it stands even if the stake has to be refunded.
+  await membership.recordFeePaid(payment, actor);
+  const stakePart = Number(payment.amount) - (Number(payment.fee_amount) || 0);
   let h = await db('holdings').where({ id: payment.holding_id }).first();
   if (h.status === 'cancelled') { // paid after the reservation lapsed: reinstate if the units are still free, otherwise flag a refund
     const reinstated = await db.transaction(async (trx) => {
@@ -78,16 +82,16 @@ async function markPaymentSuccess(payment, { channel, raw, by, mustWin } = {}) {
     });
     if (!reinstated) {
       await db('payments').where({ id: payment.id }).update({ status: 'refund_due' });
-      await activity.log(actor, 'payment.refund_due', { type: 'payment', id: payment.id }, { ref: h.ref, amount: payment.amount });
+      await activity.log(actor, 'payment.refund_due', { type: 'payment', id: payment.id }, { ref: h.ref, amount: stakePart, membershipFeeKept: Number(payment.fee_amount) || 0 });
       const admins = await db('admins').where({ status: 'active' }).whereIn('role', ['Super Admin', 'Finance Officer']);
-      for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: h.ref, subject: `Refund needed: payment for ${h.ref} arrived after its units were released`, paragraphs: [`${fmtN(payment.amount)} (reference ${payment.reference}) was paid after the reservation lapsed and the units are no longer available.`, 'Refund the member or offer units in another package.'] });
+      for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: h.ref, subject: `Refund needed: payment for ${h.ref} arrived after its units were released`, paragraphs: [`${fmtN(payment.amount)} (reference ${payment.reference}) was paid after the reservation lapsed and the units are no longer available.`, Number(payment.fee_amount) ? `Refund the stake part, ${fmtN(stakePart)}, or offer units in another package. The ${fmtN(payment.fee_amount)} yearly membership fee in this payment is non-refundable and the membership is now active.` : 'Refund the member or offer units in another package.'] });
       return h;
     }
   }
   await db('holdings').where({ id: payment.holding_id }).update({ payment_verified: true, paid_at: now(), reserved_until: null });
   h = await db('holdings').where({ id: payment.holding_id }).first();
   const u = await db('users').where({ id: h.user_id }).first();
-  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Payment received for ${h.ref}`, paragraphs: [`We have received ${fmtN(payment.amount)} for ${h.units} unit${h.units > 1 ? 's' : ''} (${h.ref}). The money is held in the escrow account until the store opens.`, u.kyc_status === 'verified' ? 'Your units are now confirmed.' : 'Your units will be confirmed as soon as your identity check is complete.'] });
+  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Payment received for ${h.ref}`, paragraphs: [Number(payment.fee_amount) ? `We have received ${fmtN(payment.amount)}: ${fmtN(stakePart)} for ${h.units} unit${h.units > 1 ? 's' : ''} (${h.ref}) and ${fmtN(payment.fee_amount)} for your yearly cooperative membership. The unit money is held in the escrow account until the store opens. The membership fee is non-refundable and earns no returns; returns are paid on your units only.` : `We have received ${fmtN(payment.amount)} for ${h.units} unit${h.units > 1 ? 's' : ''} (${h.ref}). The money is held in the escrow account until the store opens.`, u.kyc_status === 'verified' ? 'Your units are now confirmed.' : 'Your units will be confirmed as soon as your identity check is complete.'] });
   return settle(h.id, by ? { type: 'admin', id: by } : { type: 'system' });
 }
 

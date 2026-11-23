@@ -38,13 +38,14 @@ r.post('/packages/:id/open', requirePerm('packages'), async (req, res) => { cons
 
 r.get('/holdings', async (req, res) => {
   let q = getDb()('holdings as h').join('users as u', 'u.id', 'h.user_id').join('packages as p', 'p.id', 'h.package_id')
-    .select('h.*', 'u.name as holder', 'u.email as holder_email', 'u.kyc_status', 'p.name as package_name').orderBy('h.created_at', 'desc').limit(1000);
+    .select('h.*', 'u.name as holder', 'u.email as holder_email', 'u.kyc_status', 'p.name as package_name',
+      getDb().raw("(select coalesce(max(y.fee_amount), 0) from payments y where y.holding_id = h.id and y.status in ('success', 'pending_review', 'refund_due')) as membership_fee")).orderBy('h.created_at', 'desc').limit(1000);
   if (req.query.status) q = q.where('h.status', req.query.status);
   if (req.query.packageId) q = q.where('h.package_id', req.query.packageId);
   res.json({ holdings: await q });
 });
 r.get('/payments', async (req, res) => {
-  let q = getDb()('payments as y').join('holdings as h', 'h.id', 'y.holding_id').join('users as u', 'u.id', 'y.user_id').select('y.id', 'y.reference', 'y.provider', 'y.amount', 'y.status', 'y.channel', 'y.created_at', 'y.verified_at', 'h.ref', 'h.units', 'u.name as payer').orderBy('y.created_at', 'desc').limit(1000);
+  let q = getDb()('payments as y').join('holdings as h', 'h.id', 'y.holding_id').join('users as u', 'u.id', 'y.user_id').select('y.id', 'y.reference', 'y.provider', 'y.amount', 'y.fee_amount', 'y.fee_status', 'y.status', 'y.channel', 'y.created_at', 'y.verified_at', 'h.ref', 'h.units', 'u.name as payer').orderBy('y.created_at', 'desc').limit(1000);
   if (req.query.status) q = q.where('y.status', req.query.status);
   res.json({ payments: await q });
 });
@@ -68,7 +69,7 @@ r.post('/payments/:id/reject', requirePerm('payments'), async (req, res) => {
 });
 
 r.get('/settings/terms', async (req, res) => res.json({ terms: await getTerms(), escrow: await getSetting('escrow') }));
-const Terms = z.object({ unitPrice: z.number().int().min(10000), unitsPerPackage: z.number().int().min(1).max(200), targetPerCycle: z.number().min(0).max(0.5), cycleDays: z.number().int().min(7).max(365), coverFloor: z.number().min(1).max(3), reservePct: z.number().min(0).max(0.5), capPct: z.number().min(0).max(1), minHoldMonths: z.number().int().min(0).max(60), reservationHours: z.number().int().min(1).max(168) }).partial();
+const Terms = z.object({ unitPrice: z.number().int().min(10000), unitsPerPackage: z.number().int().min(1).max(200), targetPerCycle: z.number().min(0).max(0.5), cycleDays: z.number().int().min(7).max(365), coverFloor: z.number().min(1).max(3), reservePct: z.number().min(0).max(0.5), capPct: z.number().min(0).max(1), minHoldMonths: z.number().int().min(0).max(60), reservationHours: z.number().int().min(1).max(168), membershipFee: z.number().int().min(0).max(1000000), membershipMonths: z.number().int().min(1).max(36) }).partial();
 r.put('/settings/terms', requirePerm('settings'), async (req, res) => {
   const d = Terms.parse(req.body.terms || {}); const t = await putSetting('terms', { ...(await getTerms()), ...d });
   if (req.body.escrow) await putSetting('escrow', { ...(await getSetting('escrow')), ...z.object({ bank: z.string().max(80), accountNumber: z.string().max(20), accountName: z.string().max(120) }).partial().parse(req.body.escrow) });

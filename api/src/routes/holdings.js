@@ -8,6 +8,7 @@ const { requireUser } = require('../lib/auth');
 const { getTerms, getSetting } = require('../lib/terms');
 const counters = require('../lib/counters');
 const units = require('../lib/units');
+const membership = require('../lib/membership');
 const paystack = require('../lib/paystack');
 const activity = require('../lib/activity');
 const { sendEmail } = require('../lib/mailer');
@@ -18,13 +19,16 @@ const shapeH = (h, p) => ({ id: h.id, ref: h.ref, package: p ? { id: p.id, name:
 r.get('/', async (req, res) => {
   const db = getDb(); const hs = await db('holdings').where({ user_id: req.user.id }).orderBy('created_at', 'desc');
   const ps = await db('packages').whereIn('id', [...new Set(hs.map((h) => h.package_id))]);
-  res.json({ holdings: hs.map((h) => shapeH(h, ps.find((p) => p.id === h.package_id))) });
+  // membershipFee: the yearly fee carried by this stake's live or settled payment (0 for most stakes)
+  const pays = hs.length ? await db('payments').whereIn('holding_id', hs.map((h) => h.id)).whereIn('status', ['initialized', 'pending_review', 'success', 'refund_due']).orderBy('created_at', 'asc').select('holding_id', 'fee_amount', 'status') : [];
+  const feeOf = (id) => { const ps2 = pays.filter((y) => y.holding_id === id); const ok = ps2.filter((y) => ['success', 'refund_due', 'pending_review'].includes(y.status)); const y = (ok.length ? ok : ps2).pop(); return y ? Number(y.fee_amount) || 0 : 0; };
+  res.json({ holdings: hs.map((h) => ({ ...shapeH(h, ps.find((p) => p.id === h.package_id)), membershipFee: feeOf(h.id) })) });
 });
 r.get('/:id', async (req, res) => {
   const db = getDb(); const h = await db('holdings').where({ id: req.params.id, user_id: req.user.id }).first(); if (!h) throw new HttpError(404, 'Not found.');
   const p = await db('packages').where({ id: h.package_id }).first(); const out = shapeH(h, p);
   if (h.cert_no) out.certificate.verificationCode = units.verifyCode(h.ref, h.cert_no, req.user.name);
-  res.json({ holding: out, payments: await db('payments').where({ holding_id: h.id }).select('reference', 'provider', 'amount', 'status', 'channel', 'created_at', 'verified_at') });
+  res.json({ holding: out, payments: await db('payments').where({ holding_id: h.id }).select('reference', 'provider', 'amount', 'fee_amount', 'status', 'channel', 'created_at', 'verified_at') });
 });
 
 const Reserve = z.object({ packageId: z.string().min(1), units: z.number().int().min(1).max(40), signedName: z.string().trim().min(3).max(120), agree: z.literal(true, { errorMap: () => ({ message: 'Read and accept the key terms and the Unit Subscription and Security Agreement.' }) }) });
@@ -63,13 +67,23 @@ r.post('/:id/pay', async (req, res) => {
   if (h.reserved_until && new Date(h.reserved_until) < now()) throw bad('This reservation has expired. Reserve again.');
   const reference = `${h.ref}-${Date.now().toString(36).toUpperCase()}`;
   await db('holdings').where({ id: h.id }).update({ method });
+  // The yearly membership fee rides on the member's first stake payment. Locking the member's row makes two
+  // simultaneous checkouts decide one at a time, so only one of them can carry the fee.
+  const payId = uuid(); let fee = 0; const terms = await getTerms();
+  await db.transaction(async (trx) => {
+    const u = await trx('users').where({ id: req.user.id }).forUpdate().first();
+    fee = await membership.feeForPayment(u, h.id, trx, terms);
+    await trx('payments').insert({ id: payId, holding_id: h.id, user_id: h.user_id, provider: method === 'transfer' ? 'transfer' : 'paystack', reference, amount: Number(h.amount) + fee, fee_amount: fee, status: 'initialized' });
+  });
+  const total = Number(h.amount) + fee;
+  const breakdown = { units: Number(h.amount), membershipFee: fee, total };
   if (method === 'transfer') {
-    await db('payments').insert({ id: uuid(), holding_id: h.id, user_id: h.user_id, provider: 'transfer', reference, amount: h.amount, status: 'initialized' });
-    return res.json({ method, reference, amount: Number(h.amount), escrow: await getSetting('escrow'), note: 'Use the reference as the transfer narration, then tap "I have sent the transfer".' });
+    return res.json({ method, reference, amount: total, breakdown, escrow: await getSetting('escrow'), note: 'Use the reference as the transfer narration, then tap "I have sent the transfer".' });
   }
-  const init = await paystack.initialize({ email: req.user.email, amountNaira: Number(h.amount), reference, callbackUrl: `${config.appUrl}/#pay-result?ref=${encodeURIComponent(reference)}`, channels: method === 'card' ? ['card'] : ['bank', 'bank_transfer'], metadata: { holding: h.ref, units: h.units, user: req.user.id } });
-  await db('payments').insert({ id: uuid(), holding_id: h.id, user_id: h.user_id, provider: 'paystack', reference, amount: h.amount, status: 'initialized' });
-  res.json({ method, reference, authorizationUrl: init.authorization_url, accessCode: init.access_code });
+  let init;
+  try { init = await paystack.initialize({ email: req.user.email, amountNaira: total, reference, callbackUrl: `${config.appUrl}/#pay-result?ref=${encodeURIComponent(reference)}`, channels: method === 'card' ? ['card'] : ['bank', 'bank_transfer'], metadata: { holding: h.ref, units: h.units, user: req.user.id, membership_fee: fee } }); }
+  catch (e) { await db('payments').where({ id: payId }).update({ status: 'failed' }); throw e; }
+  res.json({ method, reference, amount: total, breakdown, authorizationUrl: init.authorization_url, accessCode: init.access_code });
 });
 
 r.post('/:id/transfer-sent', async (req, res) => {
@@ -79,7 +93,7 @@ r.post('/:id/transfer-sent', async (req, res) => {
   await db('payments').where({ id: p.id }).update({ status: 'pending_review' });
   await db('holdings').where({ id: h.id }).update({ status: 'confirming', reserved_until: null });
   await activity.log({ type: 'user', id: req.user.id }, 'units.transfer_reported', { type: 'holding', id: h.id }, { reference: p.reference });
-  await sendEmail({ to: req.user.email, name: req.user.name.split(' ')[0], category: 'units', ref: h.ref, subject: `We are confirming your transfer for ${h.ref}`, paragraphs: [`Thank you. We will match your transfer of ₦${Number(h.amount).toLocaleString('en-NG')} (reference ${p.reference}) in the escrow account, usually within one working day.`] });
+  await sendEmail({ to: req.user.email, name: req.user.name.split(' ')[0], category: 'units', ref: h.ref, subject: `We are confirming your transfer for ${h.ref}`, paragraphs: [`Thank you. We will match your transfer of ₦${Number(p.amount).toLocaleString('en-NG')} (reference ${p.reference}) in the escrow account, usually within one working day.`, ...(Number(p.fee_amount) ? [`This includes your yearly cooperative membership fee of ₦${Number(p.fee_amount).toLocaleString('en-NG')}. The fee is non-refundable and earns no returns; returns are paid on your units only.`] : [])] });
   res.json({ ok: true });
 });
 

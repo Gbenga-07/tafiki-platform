@@ -7,7 +7,9 @@ const { setDb, getDb } = require('../src/db');
 const { createApp } = require('../src/app');
 const pw = require('../src/lib/passwords');
 const { uuid } = require('../src/lib/util');
-async function setup() {
+// Older suites (stages 1-4, stress) test other rules and run with the membership fee off.
+// Pass { membershipFee: true } to keep the real ₦50,000 yearly fee (lifecycle and membership tests do).
+async function setup(opts = {}) {
   let k;
   if (process.env.TEST_DB === 'mysql') { // run the same tests against MySQL/MariaDB: TEST_DB=mysql npm run test:mysql
     const conn = { host: process.env.TEST_DB_HOST || '127.0.0.1', port: 3306, user: process.env.TEST_DB_USER || 'tafiki', password: process.env.TEST_DB_PASSWORD || 'testpass' };
@@ -16,6 +18,7 @@ async function setup() {
     k = knexLib({ client: 'mysql2', connection: { ...conn, database: name }, migrations: require('../knexfile').migrations });
   } else k = knexLib({ ...require('../knexfile'), connection: { filename: ':memory:' }, pool: { min: 1, max: 1 } });
   setDb(k); await k.migrate.latest();
+  if (!opts.membershipFee) await k('settings').insert({ key: 'terms', value: JSON.stringify({ membershipFee: 0 }) });
   const app = createApp();
   return { app, db: k };
 }

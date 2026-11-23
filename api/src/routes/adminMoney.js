@@ -28,9 +28,12 @@ r.get('/analytics', async (req, res) => {
   const series = (rows, dateKey, valKey) => months.map((m) => rows.filter((r) => key(r[dateKey]) === m).reduce((a, r) => a + Number(r[valKey]), 0));
   let run = conf.filter((h) => key(h.paid_at) && key(h.paid_at) < months[0]).reduce((a, h) => a + Number(h.amount), 0);
   const newCap = series(conf, 'paid_at', 'amount'); const capital = newCap.map((v) => (run += v));
+  const fees = await db('memberships').select('amount', 'created_at', 'user_id'); // membership fees: separate from unit capital, earn no returns
   const statusRows = await db('holdings').whereNot({ status: 'cancelled' }).select('status').sum({ units: 'units' }).groupBy('status');
-  res.json({ months, capitalRaised: capital, newCapital: newCap, stockDelivered: series(delivered, 'delivered_at', 'value'), remittanceConfirmed: series(rem, 'confirmed_at', 'amount'), payoutsToHolders: series(pay, 'created_at', 'investors_total'),
-    totals: { capital: conf.reduce((a, h) => a + Number(h.amount), 0), units: conf.reduce((a, h) => a + h.units, 0), unitHolders: new Set(conf.map((h) => h.user_id)).size, stockDelivered: delivered.reduce((a, x) => a + Number(x.value), 0), payouts: pay.reduce((a, x) => a + Number(x.investors_total), 0) },
+  res.json({ months, capitalRaised: capital, newCapital: newCap, stockDelivered: series(delivered, 'delivered_at', 'value'), remittanceConfirmed: series(rem, 'confirmed_at', 'amount'), payoutsToHolders: series(pay, 'created_at', 'investors_total'), membershipFees: series(fees, 'created_at', 'amount'),
+    totals: { capital: conf.reduce((a, h) => a + Number(h.amount), 0), units: conf.reduce((a, h) => a + h.units, 0), unitHolders: new Set(conf.map((h) => h.user_id)).size, stockDelivered: delivered.reduce((a, x) => a + Number(x.value), 0), payouts: pay.reduce((a, x) => a + Number(x.investors_total), 0), membershipFees: fees.reduce((a, x) => a + Number(x.amount), 0), paidMembers: new Set(fees.map((x) => x.user_id)).size },
     unitsByStatus: Object.fromEntries(statusRows.map((s) => [s.status, Number(s.units)])) });
 });
+r.get('/memberships', async (req, res) => res.json({ memberships: await getDb()('memberships as m').join('users as u', 'u.id', 'm.user_id').join('payments as y', 'y.id', 'm.payment_id')
+  .select('m.id', 'm.amount', 'm.period_start', 'm.period_end', 'm.created_at', 'u.id as user_id', 'u.name as member', 'u.coop_no', 'y.reference').orderBy('m.created_at', 'desc').limit(2000) }));
 module.exports = r;

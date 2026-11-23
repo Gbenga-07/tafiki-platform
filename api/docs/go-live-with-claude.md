@@ -134,9 +134,9 @@ Open **https://tafiki.com**. A small **"Test mode"** label should show at the bo
 | 3 | In the console, open **Investment Packages → Add package**: name "FOODCORE Test", **2 units** | A funding package, 0 of 2 |
 | 4 | In a private browser window, register as a unit holder with your own email | The Smile ID screen opens |
 | 5 | Complete Smile ID with a **sandbox test ID number** and a selfie | Shortly after, Console → Investors shows **Verified**. If it shows "review", approve it in the console |
-| 6 | Buy **1 unit by card**. On the Paystack page use **4084 0840 8408 4081**, CVV **408**, any future expiry | Back on Tafiki: unit confirmed, certificate number shown. The email is in Console → Email Correspondence |
+| 6 | Buy **1 unit by card**. On the Paystack page use **4084 0840 8408 4081**, CVV **408**, any future expiry | Paystack shows **₦2,050,000** (₦2,000,000 unit + ₦50,000 yearly membership fee, first stake only). Back on Tafiki: unit confirmed, certificate shown, membership "paid until" a year ahead. The email is in Console → Email Correspondence |
 | 7 | Try a failed payment: start another purchase and use **4084 0800 0000 5408**, CVV **001** | Payment declined. The unit stays reserved for 48 hours |
-| 8 | Buy the 2nd unit by **bank transfer** and tap "I've made the transfer" | Console → Units and Payments shows it waiting. Click **Funds Received** |
+| 8 | Buy the 2nd unit by **bank transfer** and tap "I've made the transfer" | No membership fee this time (₦2,000,000 only). Console → Units and Payments shows it waiting. Click **Funds Received** |
 | 9 | Package is now full. Click **Open package** | One delivery per stake appears in **Deliveries** |
 | 10 | Move a delivery to **In Transit** (or wait 6 hours per stage) | Console → SMS log shows the code message as "logged". The store portal shows the 6-digit code |
 | 11 | Click **Complete** and enter the code | Delivered. Store shelf value goes up |

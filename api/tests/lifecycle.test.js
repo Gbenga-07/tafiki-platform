@@ -39,7 +39,7 @@ const settle = () => new Promise((r) => setTimeout(r, 400));
 const all = (xs) => Promise.all(xs);
 
 before(async () => {
-  ({ app, db } = await setup());
+  ({ app, db } = await setup({ membershipFee: true }));
   for (const [r, e] of [['Super Admin', 'ops'], ['Finance Officer', 'fin'], ['Logistics Officer', 'logi'], ['Auditor', 'aud'], ['Admin', 'view']]) await addAdmin(r, e + '@tafiki.com');
   const login = async (e) => { const a = agent(app); await a.post('/api/admin/auth/login').send({ email: e + '@tafiki.com', password: 'Passw0rd!' }); return a; };
   [sup, fin, logi, aud, view] = await all(['ops', 'fin', 'logi', 'aud', 'view'].map(login));
@@ -93,7 +93,9 @@ test('4. Paystack sandbox: card payments with duplicate webhooks and verify call
   const holders = investors.filter((x) => x.holdingId);
   const card = holders.slice(0, 30), transfer = holders.slice(30);
   const inits = await all(card.map((inv) => inv.a.post('/api/holdings/' + inv.holdingId + '/pay').send({ method: 'card' })));
-  inits.forEach((r, i) => { assert.equal(r.status, 200, JSON.stringify(r.body)); assert.match(r.body.authorizationUrl, /checkout\.paystack\.com/); card[i].ref = r.body.reference; assert.equal(charges[r.body.reference].amount, 2000000 * 100); });
+  // first stake for each member: ₦2,000,000 for the unit + ₦50,000 yearly membership fee
+  inits.forEach((r, i) => { assert.equal(r.status, 200, JSON.stringify(r.body)); assert.match(r.body.authorizationUrl, /checkout\.paystack\.com/); card[i].ref = r.body.reference;
+    assert.deepEqual(r.body.breakdown, { units: 2000000, membershipFee: 50000, total: 2050000 }); assert.equal(charges[r.body.reference].amount, 2050000 * 100); });
   card.forEach((inv) => { charges[inv.ref].paid = true; });
   assert.equal((await sendHook({ ...paystackHook(card[0].ref), sig: 'bad' })).status, 401);
   // every webhook sent twice, and every buyer also returns to the site and verifies, all at once
@@ -101,7 +103,7 @@ test('4. Paystack sandbox: card payments with duplicate webhooks and verify call
   (await all(race)).forEach((r) => assert.ok([200, 201].includes(r.status), String(r.status)));
   await settle();
   const pays = await db('payments').where({ status: 'success' }).whereIn('reference', card.map((x) => x.ref)); assert.equal(pays.length, 30);
-  await all(transfer.map(async (inv) => { await inv.a.post('/api/holdings/' + inv.holdingId + '/pay').send({ method: 'transfer' }); await inv.a.post('/api/holdings/' + inv.holdingId + '/transfer-sent'); }));
+  await all(transfer.map(async (inv) => { const t = await inv.a.post('/api/holdings/' + inv.holdingId + '/pay').send({ method: 'transfer' }); assert.equal(t.body.amount, 2050000); await inv.a.post('/api/holdings/' + inv.holdingId + '/transfer-sent'); }));
   const pending = (await fin.get('/api/admin/payments?status=pending_review')).body.payments; assert.equal(pending.length, 10);
   // Finance double-clicks every confirm while the expiry job runs
   const cf = await all([...pending.flatMap((p) => [fin.post('/api/admin/payments/' + p.id + '/confirm'), fin.post('/api/admin/payments/' + p.id + '/confirm')]), units.expireReservations()]);
@@ -216,6 +218,11 @@ test('12. the books balance: wallets, payouts, withdrawals, units and references
   const dupRefs = await db('holdings').select('ref').count({ n: '*' }).groupBy('ref').having(db.raw('count(*) > 1')); assert.equal(dupRefs.length, 0);
   const dupCodes = await db('deliveries').select('code').count({ n: '*' }).groupBy('code').having(db.raw('count(*) > 1')); assert.equal(dupCodes.length, 0);
   const emails = await db('emails').count({ n: '*' }).first(); assert.ok(Number(emails.n) > N * 3);
+  // membership fees: one per paying member, kept apart from unit capital
+  const fees = await db('memberships').sum({ s: 'amount' }).count({ n: '*' }).first(); assert.equal(Number(fees.n), N); assert.equal(Number(fees.s), N * 50000);
+  const capital = await db('holdings').where({ package_id: pkgId }).whereNot({ status: 'cancelled' }).sum({ s: 'amount' }).first(); assert.equal(Number(capital.s), N * 2000000, JSON.stringify(await db('holdings').where({ package_id: pkgId }).select('status', 'amount', 'units')));
+  const paid = await db('payments').where({ status: 'success' }).sum({ s: 'amount' }).first(); assert.equal(Number(paid.s), N * 2050000);
+  const an = (await view.get('/api/admin/analytics')).body.totals; assert.equal(an.capital, (N - 1) * 2000000); // capital still invested: one stake was redeemed in test 11 assert.equal(an.membershipFees, N * 50000);
 });
 
 test('13. security under load: brute-force lockout, logout ends the session, admin roles hold', async () => {
