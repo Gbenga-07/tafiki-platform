@@ -34,14 +34,15 @@ r.post('/', async (req, res) => {
   if (!u.coop_no) throw new HttpError(403, 'Cooperative membership is required to buy units.');
   if (d.signedName.toLowerCase() !== u.name.toLowerCase()) throw bad('Type your full name exactly as it appears on your account to sign.');
   const terms = await getTerms(); const db = getDb();
-  const id = uuid(); const n = await counters.next('holding', 1001); const ref = 'FC-' + n;
-  await db.transaction(async (trx) => {
+  const id = uuid(); let ref;
+  await counters.retry(() => db.transaction(async (trx) => {
     const p = await trx('packages').where({ id: d.packageId }).forUpdate().first();
     if (!p || p.stage !== 'funding') throw bad('This package is not open for new units.');
     const open = p.units_total - (await units.unitsTaken(p.id, trx));
     if (d.units > open) throw bad(open ? `Only ${open} unit${open > 1 ? 's are' : ' is'} still open in ${p.name}.` : `${p.name} has no units left.`);
+    ref = 'FC-' + (await counters.next('holding', 1001, trx));
     await trx('holdings').insert({ id, ref, user_id: u.id, package_id: p.id, units: d.units, amount: d.units * terms.unitPrice, status: 'unpaid', reserved_until: addMinutes(now(), terms.reservationHours * 60), signed_name: d.signedName, signed_at: now(), agreement_version: config.termsVersion });
-  });
+  }));
   await activity.log({ type: 'user', id: u.id }, 'units.reserved', { type: 'holding', id }, { ref, units: d.units });
   const h = await db('holdings').where({ id }).first();
   res.status(201).json({ holding: shapeH(h, await db('packages').where({ id: h.package_id }).first()) });

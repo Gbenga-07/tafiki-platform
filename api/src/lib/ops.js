@@ -57,7 +57,7 @@ async function advance(id, actor, note) {
   const db = getDb(); const d = await db('deliveries').where({ id }).first();
   if (!d) throw new HttpError(404, 'Delivery not found.');
   if (d.status >= 2) throw bad(d.status === 3 ? 'This delivery is complete.' : 'The last step needs the store’s delivery code.');
-  await db('deliveries').where({ id }).update({ status: d.status + 1, delay_minutes: 0 });
+  if (!(await db('deliveries').where({ id, status: d.status }).update({ status: d.status + 1, delay_minutes: 0 }))) throw bad('This delivery has just moved on.');
   const nd = await db('deliveries').where({ id }).first();
   await logStage(nd, nd.status, note, actor ? actor.type + ':' + actor.id : 'auto');
   await notifyStage(nd);
@@ -73,7 +73,8 @@ async function ensureCycle(storeUserId, startAt) {
 }
 async function markDelivered(d, how, actor) {
   const db = getDb(); const at = now();
-  await db('deliveries').where({ id: d.id }).update({ status: 3, delivered_at: at, override_reason: how.override || null });
+  const won = await db('deliveries').where({ id: d.id }).where('status', '<', 3).update({ status: 3, delivered_at: at, override_reason: how.override || null });
+  if (!won) throw bad('This delivery is already complete.');
   const nd = await db('deliveries').where({ id: d.id }).first();
   await logStage(nd, 3, how.override ? 'Override: ' + how.override : 'Confirmed with delivery code', how.by || 'driver');
   // first stock of a cycle (stake delivery, or restock after reconciliation) starts the store's cycle
@@ -90,7 +91,8 @@ async function completeWithCode(d, code, by) {
   if (d.code_attempts >= L.maxCodeAttempts) throw new HttpError(423, 'Too many wrong codes. Tafiki operations has been alerted.');
   if (sha256(d.id + '|' + String(code || '').trim()) !== d.code_hash) {
     await db('deliveries').where({ id: d.id }).increment('code_attempts', 1);
-    if (d.code_attempts + 1 >= L.maxCodeAttempts) { await activity.log(null, 'delivery.code_locked', { type: 'delivery', id: d.id }, { code: d.code }); const admins = await db('admins').where({ status: 'active' }).whereIn('role', ['Super Admin', 'Operations Manager', 'Logistics Officer']); for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: d.code, subject: `Delivery #${d.code} locked after wrong codes`, paragraphs: ['Too many wrong delivery codes were entered. Contact the store and driver, then reissue the code or complete the delivery with a reason.'] }); }
+    const fresh = await db('deliveries').where({ id: d.id }).first();
+    if (fresh.code_attempts === L.maxCodeAttempts) { await activity.log(null, 'delivery.code_locked', { type: 'delivery', id: d.id }, { code: d.code }); const admins = await db('admins').where({ status: 'active' }).whereIn('role', ['Super Admin', 'Operations Manager', 'Logistics Officer']); for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: d.code, subject: `Delivery #${d.code} locked after wrong codes`, paragraphs: ['Too many wrong delivery codes were entered. Contact the store and driver, then reissue the code or complete the delivery with a reason.'] }); }
     throw bad('That delivery code is not correct.');
   }
   return markDelivered(d, { by }, null);
@@ -123,7 +125,7 @@ async function recordAudit(storeUserId, value, actor) {
   if (new Date(c.audit_at) > now()) throw bad(`The day-28 audit for cycle ${c.k} opens on ${new Date(c.audit_at).toDateString()}.`);
   const acc = await storeAccount(storeUserId);
   if (!(value >= 0) || value > acc.onShelf) throw bad(`The audited sales value must be between ₦0 and the ${N(acc.onShelf)} on the shelf.`);
-  await db('store_cycles').where({ id: c.id }).update({ audited_value: Math.round(value), audited_at: now(), audited_by: actor.id });
+  if (!(await db('store_cycles').where({ id: c.id }).whereNull('audited_at').update({ audited_value: Math.round(value), audited_at: now(), audited_by: actor.id }))) throw bad(`Cycle ${c.k} has already been audited.`);
   const store = await db('users').where({ id: storeUserId }).first();
   await sendEmail({ to: store.email, name: 'Store Manager', category: 'audit', ref: 'cycle-' + c.k, subject: `Day-28 audit recorded for cycle ${c.k}`, paragraphs: [`Audited sales for cycle ${c.k}: ${N(value)}.`, `Remittance due: ${N(acc.remittanceDue + Math.round(value))}. Pay into the Tafiki Collections Account and report it in your store portal.`] });
   await activity.log(actor, 'store.audited', { type: 'user', id: storeUserId }, { cycle: c.k, value });
@@ -131,19 +133,26 @@ async function recordAudit(storeUserId, value, actor) {
 }
 async function reportRemittance(store, amount, bankReference) {
   const db = getDb(); if (!(amount > 0)) throw bad('Enter the amount you paid.');
-  const acc = await storeAccount(store.id); const open = acc.remittanceDue - acc.remittancePending;
-  if (open <= 0) throw bad(acc.remittancePending ? 'Your earlier remittance is still being confirmed.' : 'There is no remittance due right now.');
-  if (amount > open) throw bad(`The amount due is ${N(open)}. Report the exact amount you paid, up to that figure.`);
   const c = await db('store_cycles').where({ store_user_id: store.id }).orderBy('k', 'desc').first();
-  const id = uuid(); const ref = 'RM-' + String(await counters.next('remittance', 1)).padStart(4, '0');
-  await db('remittances').insert({ id, ref, store_user_id: store.id, cycle_k: c ? c.k : null, amount: Math.round(amount), bank_reference: bankReference || null, status: 'pending' });
+  const id = uuid(); let ref;
+  await counters.retry(() => db.transaction(async (trx) => {
+    await trx('users').where({ id: store.id }).forUpdate().first();
+    const sold = Number((await trx('store_cycles').where({ store_user_id: store.id }).sum({ s: 'audited_value' }).first()).s) || 0;
+    const done = Number((await trx('remittances').where({ store_user_id: store.id }).whereIn('status', ['confirmed', 'pending']).sum({ s: 'amount' }).first()).s) || 0;
+    const pending = Number((await trx('remittances').where({ store_user_id: store.id, status: 'pending' }).sum({ s: 'amount' }).first()).s) || 0;
+    const open = sold - done;
+    if (open <= 0) throw bad(pending ? 'Your earlier remittance is still being confirmed.' : 'There is no remittance due right now.');
+    if (amount > open) throw bad(`The amount due is ${N(open)}. Report the exact amount you paid, up to that figure.`);
+    ref = 'RM-' + String(await counters.next('remittance', 1, trx)).padStart(4, '0');
+    await trx('remittances').insert({ id, ref, store_user_id: store.id, cycle_k: c ? c.k : null, amount: Math.round(amount), bank_reference: bankReference || null, status: 'pending' });
+  }));
   await activity.log({ type: 'user', id: store.id }, 'store.remittance_reported', { type: 'remittance', id }, { ref, amount });
   return db('remittances').where({ id }).first();
 }
 async function decideRemittance(id, ok, actor, note) {
   const db = getDb(); const r = await db('remittances').where({ id }).first(); if (!r) throw new HttpError(404, 'Remittance not found.');
   if (r.status !== 'pending') throw bad('This remittance has already been decided.');
-  await db('remittances').where({ id }).update({ status: ok ? 'confirmed' : 'rejected', confirmed_by: actor.id, confirmed_at: now(), note: note || null });
+  if (!(await db('remittances').where({ id, status: 'pending' }).update({ status: ok ? 'confirmed' : 'rejected', confirmed_by: actor.id, confirmed_at: now(), note: note || null }))) throw bad('This remittance has already been decided.');
   const store = await db('users').where({ id: r.store_user_id }).first();
   await sendEmail({ to: store.email, name: 'Store Manager', category: 'remittance', ref: r.ref, subject: ok ? `Remittance ${r.ref} confirmed` : `Remittance ${r.ref} could not be confirmed`, paragraphs: [ok ? `We have confirmed your remittance of ${N(r.amount)} (${r.ref}).` : `We could not find your remittance of ${N(r.amount)} (${r.ref}) in the collections account${note ? ': ' + note : ''}. Reply with your proof of payment.`] });
   await activity.log(actor, ok ? 'remittance.confirmed' : 'remittance.rejected', { type: 'remittance', id }, { ref: r.ref, amount: r.amount });
@@ -155,7 +164,7 @@ async function reconcile(storeUserId, actor) {
   if (c.reconciled_at) throw bad(`Cycle ${c.k} is already reconciled.`);
   const acc = await storeAccount(storeUserId);
   if (acc.remittanceDue > 0) throw bad(`${N(acc.remittanceDue)} is still due. Confirm the store’s remittance before reconciling.`);
-  await db('store_cycles').where({ id: c.id }).update({ reconciled_at: now(), reconciled_by: actor.id });
+  if (!(await db('store_cycles').where({ id: c.id }).whereNull('reconciled_at').update({ reconciled_at: now(), reconciled_by: actor.id }))) throw bad(`Cycle ${c.k} is already reconciled.`);
   await activity.log(actor, 'store.reconciled', { type: 'user', id: storeUserId }, { cycle: c.k });
   await releaseRestocks(); // releases straight away if the restock date has passed
   return db('store_cycles').where({ id: c.id }).first();
@@ -167,6 +176,7 @@ async function releaseRestocks() {
   const db = getDb(); let n = 0; const pack = await getUnitPackage();
   const due = await db('store_cycles').whereNotNull('reconciled_at').whereNull('restock_released_at').where('restock_at', '<=', now());
   for (const c of due) {
+    if (!(await db('store_cycles').where({ id: c.id }).whereNull('restock_released_at').update({ restock_released_at: now() }))) continue; // claimed by another run
     const pkgs = await db('packages').where({ store_user_id: c.store_user_id, stage: 'trading' });
     const hs = pkgs.length ? await db('holdings').whereIn('package_id', pkgs.map((p) => p.id)).whereIn('status', ['active', 'redeem']) : [];
     const unitValue = pack.items.reduce((a, i) => a + i.bags * i.cost, 0);
@@ -178,7 +188,6 @@ async function releaseRestocks() {
       if (!lines.length) continue;
       await createDelivery({ kind: 'restock', cycle: c.k, storeUserId: c.store_user_id, holdingId: h.id, packageId: h.package_id, lines, code: `SO-${h.ref.replace('FC-', '')}-R${c.k}` }, null); made++; n++;
     }
-    await db('store_cycles').where({ id: c.id }).update({ restock_released_at: now() });
     if (!made) await ensureCycle(c.store_user_id, now()); // nothing sold: the next cycle starts straight away
     await activity.log(null, 'store.restock_released', { type: 'user', id: c.store_user_id }, { cycle: c.k, deliveries: made, share: Math.round(f * 1000) / 10 + '%' });
   }

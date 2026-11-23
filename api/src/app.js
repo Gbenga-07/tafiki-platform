@@ -48,6 +48,7 @@ function createApp() {
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
     if (err instanceof ZodError) return res.status(400).json({ error: err.issues[0] ? err.issues[0].message : 'Invalid request.', fields: err.issues.map((i) => i.path.join('.')) });
+    if (err && (err.code === 'ER_DUP_ENTRY' || /UNIQUE constraint failed/.test(err.message || ''))) return res.status(409).json({ error: 'This has already been done.' });
     const status = err.status || 500;
     if (status >= 500) console.error(err);
     res.status(status).json({ error: status >= 500 ? 'Something went wrong. Please try again.' : err.message, ...(err.extra || {}) });

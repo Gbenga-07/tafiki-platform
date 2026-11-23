@@ -20,6 +20,6 @@ async function setup() {
   return { app, db: k };
 }
 async function addAdmin(role, email, password = 'Passw0rd!') { await getDb()('admins').insert({ id: uuid(), name: role + ' Person', email, role, password_hash: await pw.hash(password) }); return { email, password }; }
-function agent(app) { const a = request.agent(app); const wrapM = (m) => (url) => a[m](url).set('X-Tafiki-Client', '1'); return { get: (u) => a.get(u), post: wrapM('post'), patch: wrapM('patch'), put: wrapM('put'), raw: a }; }
+function agent(app) { const a = request.agent(app); const wrapM = (m) => (url) => a[m](url).set('X-Tafiki-Client', '1'); return { get: (u) => a.get(u), post: wrapM('post'), patch: wrapM('patch'), put: wrapM('put'), delete: wrapM('delete'), raw: a }; }
 const lastEmail = async (to) => getDb()('emails').where({ to_email: to }).orderBy('created_at', 'desc').first();
 module.exports = { setup, addAdmin, agent, lastEmail };

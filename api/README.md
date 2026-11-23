@@ -203,7 +203,7 @@ Example: ₦48M profit on 40 units: tax ₦16,320,000 · unit holders ₦6,666,6
 
 ## Testing
 
-`npm test` runs all tests on an in-memory database. `npm run test:mysql` runs the same tests on MySQL/MariaDB (set TEST_DB_USER and TEST_DB_PASSWORD). Paystack, Termii and Smile ID are simulated in tests; try each in its sandbox before going live.
+`npm test` runs all tests on an in-memory database, including the stress tests in `tests/stress.test.js` (simultaneous reservations, duplicate payment reports, parallel withdrawals, double clicks on payouts, deliveries and remittances, access to other people's data, hostile input and a 300-request burst). `npm run test:mysql` runs the same tests on MySQL/MariaDB (set TEST_DB_USER and TEST_DB_PASSWORD). Paystack, Termii and Smile ID are simulated in tests; try each in its sandbox before going live.
 
 ## Deploying on InterServer
 
