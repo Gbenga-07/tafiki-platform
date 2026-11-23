@@ -98,7 +98,9 @@ test('wallet: 10 withdrawals at once can never take more than the balance', asyn
   assert.equal((await w.a.get('/api/me/wallet')).body.balance, 10000);
   const wd = (await db('withdrawals').where({ user_id: w.id }))[0];
   const ds = await Promise.all([fin.post('/api/admin/withdrawals/' + wd.id + '/pay').send({ transferReference: 'A' }), fin.post('/api/admin/withdrawals/' + wd.id + '/reject').send({ reason: 'x' }), fin.post('/api/admin/withdrawals/' + wd.id + '/pay').send({ transferReference: 'B' })]);
-  assert.equal(ds.filter((r) => r.status === 200).length, 1); assert.equal((await w.a.get('/api/me/wallet')).body.balance, 10000);
+  assert.equal(ds.filter((r) => r.status === 200).length, 1);
+  const rejected = ds[1].status === 200; // if the rejection won, the ₦20,000 goes back to the wallet
+  assert.equal((await w.a.get('/api/me/wallet')).body.balance, rejected ? 30000 : 10000);
 });
 
 test('payout run clicked 3 times at once pays once', async () => {

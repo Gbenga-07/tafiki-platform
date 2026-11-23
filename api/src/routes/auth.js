@@ -1,5 +1,6 @@
 // Member accounts: register (cooperative membership), sign in, email verification, password reset.
 const express = require('express');
+const counters = require('../lib/counters');
 const { z } = require('zod');
 const config = require('../config');
 const { getDb } = require('../db');
@@ -26,11 +27,13 @@ const Register = z.object({
   termsVersion: z.string().max(40).optional(),
 });
 
+// Membership numbers come from an atomic counter, so simultaneous sign-ups never get the same number.
 async function nextCoopNo(db) {
   const year = new Date().getFullYear();
   const prefix = `FMC-${year}-`;
   const last = await db('users').where('coop_no', 'like', prefix + '%').max({ m: 'coop_no' }).first();
-  const n = last && last.m ? parseInt(String(last.m).split('-').pop(), 10) + 1 : 1001;
+  const start = last && last.m ? parseInt(String(last.m).split('-').pop(), 10) + 1 : 1001; // used only when the year's counter is first created
+  const n = await counters.next('coop_' + year, start);
   return prefix + String(n).padStart(4, '0');
 }
 

@@ -53,11 +53,14 @@ async function deliveriesForPackage(packageId, actor) {
   return out;
 }
 
-async function advance(id, actor, note) {
+// expectStatus: the job runner passes the stage it saw, so a delivery that another runner (or an admin) has just
+// moved is skipped instead of being moved a second time.
+async function advance(id, actor, note, expectStatus) {
   const db = getDb(); const d = await db('deliveries').where({ id }).first();
   if (!d) throw new HttpError(404, 'Delivery not found.');
+  if (expectStatus !== undefined && d.status !== expectStatus) return null;
   if (d.status >= 2) throw bad(d.status === 3 ? 'This delivery is complete.' : 'The last step needs the store’s delivery code.');
-  if (!(await db('deliveries').where({ id, status: d.status }).update({ status: d.status + 1, delay_minutes: 0 }))) throw bad('This delivery has just moved on.');
+  if (!(await db('deliveries').where({ id, status: d.status }).update({ status: d.status + 1, delay_minutes: 0 }))) { if (expectStatus !== undefined) return null; throw bad('This delivery has just moved on.'); }
   const nd = await db('deliveries').where({ id }).first();
   await logStage(nd, nd.status, note, actor ? actor.type + ':' + actor.id : 'auto');
   await notifyStage(nd);
@@ -183,8 +186,17 @@ async function releaseRestocks() {
     const total = hs.reduce((a, h) => a + h.units * unitValue, 0);
     const f = total ? Math.min(1, Number(c.audited_value || 0) / total) : 0;
     let made = 0;
-    for (const h of hs) {
-      const lines = pack.items.map((i) => ({ sku: i.sku, name: i.name, size: i.size, brand: i.brand, qty: Math.round(i.bags * h.units * f), unit_cost: i.cost })).filter((l) => l.qty > 0);
+    // Share each product's bags across holdings by units, largest remainder first, so the bags sent add up
+    // exactly to what was sold (rounding per holding would over- or under-send).
+    const share = {};
+    for (const i of pack.items) {
+      const want = hs.map((h) => i.bags * h.units * f); const target = Math.round(want.reduce((a, x) => a + x, 0));
+      const q = want.map(Math.floor); let left = target - q.reduce((a, x) => a + x, 0);
+      want.map((x, k) => [x - Math.floor(x), k]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).forEach(([, k]) => { if (left > 0) { q[k]++; left--; } });
+      share[i.sku] = q;
+    }
+    for (const [k, h] of hs.entries()) {
+      const lines = pack.items.map((i) => ({ sku: i.sku, name: i.name, size: i.size, brand: i.brand, qty: share[i.sku][k], unit_cost: i.cost })).filter((l) => l.qty > 0);
       if (!lines.length) continue;
       await createDelivery({ kind: 'restock', cycle: c.k, storeUserId: c.store_user_id, holdingId: h.id, packageId: h.package_id, lines, code: `SO-${h.ref.replace('FC-', '')}-R${c.k}` }, null); made++; n++;
     }
@@ -199,7 +211,9 @@ async function autoAdvance() {
   for (const d of open) {
     const last = await db('delivery_log').where({ delivery_id: d.id, stage: d.status }).orderBy('id', 'desc').first();
     const at = new Date(last ? last.at : d.created_at).getTime() + (L.stageHours * 60 + d.delay_minutes) * 60000;
-    if (at <= Date.now()) { await advance(d.id, null, 'Automatic update'); n++; }
+    if (at > Date.now()) continue;
+    try { if (await advance(d.id, null, 'Automatic update', d.status)) n++; }
+    catch (e) { if (!(e instanceof HttpError)) throw e; } // moved on by someone else at the same moment
   }
   return n;
 }

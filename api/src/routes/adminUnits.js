@@ -14,10 +14,10 @@ r.use(requireAdmin);
 const me = (req) => ({ type: 'admin', id: req.admin.id });
 
 r.get('/packages', async (req, res) => { const ps = await getDb()('packages').orderBy('created_at'); res.json({ packages: await Promise.all(ps.map(async (p) => ({ ...(await shape(p)), storeUserId: p.store_user_id }))) }); });
-const Pkg = z.object({ name: z.string().trim().regex(/^FOODCORE\s+\S/i, 'Package names start with FOODCORE.').max(120), area: z.string().trim().min(3).max(160), city: z.string().trim().min(2).max(80), state: z.string().trim().max(40).optional(), route: z.string().trim().max(80).optional(), targetOpen: z.string().trim().max(40).optional(), unitsTotal: z.number().int().min(1).max(200).optional() });
+const Pkg = z.object({ name: z.string().trim().regex(/^FOODCORE\s+\S/i, 'Package names start with FOODCORE.').max(120), area: z.string().trim().min(3).max(160), city: z.string().trim().min(2).max(80), state: z.string().trim().max(40).optional(), route: z.string().trim().max(80).optional(), targetOpen: z.string().trim().max(40).optional(), unitsTotal: z.number().int().min(1).max(200).optional(), storeUserId: z.string().max(36).optional() });
 r.post('/packages', requirePerm('packages'), async (req, res) => {
   const d = Pkg.parse(req.body); const t = await getTerms(); const id = uuid();
-  await getDb()('packages').insert({ id, name: d.name, area: d.area, city: d.city, state: d.state || 'Oyo', route: d.route || null, target_open: d.targetOpen || null, units_total: d.unitsTotal || t.unitsPerPackage });
+  await getDb()('packages').insert({ id, name: d.name, area: d.area, city: d.city, state: d.state || 'Oyo', route: d.route || null, target_open: d.targetOpen || null, units_total: d.unitsTotal || t.unitsPerPackage, store_user_id: d.storeUserId && (await getDb()('users').where({ id: d.storeUserId, role: 'retailer' }).first()) ? d.storeUserId : null });
   await activity.log(me(req), 'package.created', { type: 'package', id }, { name: d.name });
   res.status(201).json({ package: await shape(await getDb()('packages').where({ id }).first()) });
 });
@@ -25,6 +25,11 @@ r.patch('/packages/:id', requirePerm('packages'), async (req, res) => {
   const d = Pkg.partial().parse(req.body); const db = getDb(); const p = await db('packages').where({ id: req.params.id }).first(); if (!p) throw new HttpError(404, 'Package not found.');
   const upd = {}; for (const [k, c] of [['name', 'name'], ['area', 'area'], ['city', 'city'], ['state', 'state'], ['route', 'route'], ['targetOpen', 'target_open']]) if (d[k] !== undefined) upd[c] = d[k];
   if (d.unitsTotal !== undefined) { const taken = await units.unitsTaken(p.id); if (d.unitsTotal < taken) throw bad(`${taken} units are already taken.`); upd.units_total = d.unitsTotal; }
+  if (d.storeUserId !== undefined) { // assign the FOODCORE store that will receive this package's stock
+    const st = await db('users').where({ id: d.storeUserId, role: 'retailer' }).first(); if (!st) throw bad('That FOODCORE store account was not found.');
+    if (p.stage === 'trading' && p.store_user_id && p.store_user_id !== st.id) throw bad('This package is already trading with another store.');
+    upd.store_user_id = st.id;
+  }
   if (Object.keys(upd).length) await db('packages').where({ id: p.id }).update(upd);
   await activity.log(me(req), 'package.updated', { type: 'package', id: p.id }, upd);
   res.json({ package: await shape(await db('packages').where({ id: p.id }).first()) });
@@ -46,7 +51,7 @@ r.get('/payments', async (req, res) => {
 r.post('/payments/:id/confirm', requirePerm('payments'), async (req, res) => {
   const pay = await getDb()('payments').where({ id: req.params.id }).first(); if (!pay) throw new HttpError(404, 'Payment not found.');
   if (pay.provider !== 'transfer' || !['pending_review', 'initialized'].includes(pay.status)) throw bad('Only bank transfers waiting for review can be confirmed here.');
-  const h = await units.markPaymentSuccess(pay, { channel: 'bank_transfer', by: req.admin.id });
+  const h = await units.markPaymentSuccess(pay, { channel: 'bank_transfer', by: req.admin.id, mustWin: true });
   await activity.log(me(req), 'payment.confirmed', { type: 'payment', id: pay.id }, { reference: pay.reference });
   res.json({ holding: { id: h.id, ref: h.ref, status: h.status } });
 });

@@ -1993,6 +1993,7 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
 .sm-mod{text-align:left}.sm-mod .sm-card{margin-top:0}.sm-dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px;margin:0 0 10px}.sm-dl dt{color:#7A8770}.sm-dl dd{margin:0;color:#1D4107;font-weight:600}
 .sm-prods{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
 @media(max-width:700px){.sm-g{grid-template-columns:1fr 1fr}.sm-ck,.sm-prods{grid-template-columns:1fr}}
+@media(max-width:640px){.fx-top{flex-wrap:wrap;gap:10px}.fx-top .fx-search{flex:1 1 100%;order:2;min-width:0}.fx-top>*:not(.fx-search){flex-wrap:wrap}.ai-topr{display:flex;flex-wrap:wrap;gap:8px;max-width:100%}.ai-topr .ai-sw-t{display:none}.ad-two{grid-template-columns:minmax(0,1fr)!important}.ad-two>*{min-width:0}}
 /* consignment strength section */
 .csg{background:radial-gradient(90% 120% at 0% 0%,#3C7A1C 0%,rgba(60,122,28,0) 55%),linear-gradient(150deg,#25520D,#132D04);color:#fff}
 .csg .sec-h h2{color:#fff}.csg .sec-h p{color:#CFE3B8;max-width:760px;margin-left:auto;margin-right:auto}.csg .eyebrow{color:#A5C783}
@@ -2051,7 +2052,7 @@ const sku=id=>SKUS.find(s=>s.id===id);
 const ws=s=>Math.round(s.cost*1.05/50)*50; // partner-shop wholesale price
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const N=n=>'₦'+Math.round(n).toLocaleString('en-NG');
+const N=n=>'₦'+(Math.round(n)||0).toLocaleString('en-NG');
 const M=n=>{const a=Math.abs(n);let s;
   if(a>=1e9)s=(n/1e9).toFixed(2)+'B';else if(a>=1e6)s=(n/1e6).toFixed(2)+'M';else if(a>=1e3)s=(n/1e3).toFixed(1)+'K';else return N(n);
   return '₦'+s.replace(/\.00(?=[MBK])/,'').replace(/(\.\d)0(?=[MB])/,'$1').replace(/\.0(?=K)/,'');};
@@ -2225,7 +2226,7 @@ function pHome(){
   <div class="figs"><div><b>₦2M</b><span>per unit</span></div><div><b>40</b><span>units per store</span></div><div><b>8.33%</b><span>target every 90 days</span></div></div>
  </div>
  <div class="hero-img"><img src="img/hero-truck.jpg" alt="A Tafiki delivery truck at a distribution centre loading bay">
-  <a class="float-card" href="#store-${feat.id}"><span class="eyebrow">Filling now</span><b>${esc(feat.name)}</b><span class="small muted">${freeSlots(feat)} of 40 units open · opens ${esc(feat.target)}</span><div class="bar"><i style="width:${taken(feat)/40*100}%"></i></div></a>
+  ${feat?`<a class="float-card" href="#store-${feat.id}"><span class="eyebrow">Filling now</span><b>${esc(feat.name)}</b><span class="small muted">${freeSlots(feat)} of 40 units open · opens ${esc(feat.target)}</span><div class="bar"><i style="width:${taken(feat)/40*100}%"></i></div></a>`:''}
  </div>
 </div></section>
 <section class="brandstrip"><div class="wrap trust2"><div class="brands2"><span class="small muted">Brands on every ${fcW()} shelf</span><div class="logos"><img src="img/logo-foodhybrid.jpg" alt="Food Hybrid"><span class="sep" aria-hidden="true"></span><img src="img/foodcore-logo.png" alt="Foodcore" class="fc-lg"><span class="sep" aria-hidden="true"></span><img src="img/logo-greenoasis.jpg" alt="Green Oasis Foods"></div></div><div class="brands2 certs2"><span class="small muted">Certified and insured</span><div class="logos"><img src="img/haccp.jpg" alt="HACCP certified" class="c-haccp"><span class="sep" aria-hidden="true"></span><span class="fda c-fda" aria-label="FDA registered">FDA</span><span class="sep" aria-hidden="true"></span><img src="img/leadway-logo.png" alt="Insured in transit by Leadway Assurance" class="c-lw"></div></div></div></section>
@@ -5209,7 +5210,7 @@ window.LIVE=!!LIVE_API;
 if(window.LIVE){
 const API=async(path,opts={})=>{const o={method:opts.method||'GET',credentials:'include',headers:{'Content-Type':'application/json','X-Tafiki-Client':'1'}};if(opts.body!==undefined)o.body=JSON.stringify(opts.body);
  let res;try{res=await fetch(LIVE_API+path,o);}catch(e){throw Object.assign(new Error('Cannot reach Tafiki right now. Check your connection and try again.'),{status:0});}
- const j=await res.json().catch(()=>({}));if(!res.ok)throw Object.assign(new Error(j.error||'Something went wrong. Please try again.'),{status:res.status,data:j});return j;};
+ const j=await res.json().catch(()=>({}));if(res.status===401&&!/\/auth\/(me|login|register|password|logout)|\/api\/me$|\/admin\/auth\/(me|login|code)/.test(path)&&window.LV)sessionEnded();if(!res.ok)throw Object.assign(new Error(j.error||'Something went wrong. Please try again.'),{status:res.status,data:j});return j;};
 window.API=API;
 const toD=x=>{if(typeof x==='string'&&/^\d{4}-\d\d-\d\d[ T]\d\d:\d\d(:\d\d(\.\d+)?)?$/.test(x))x=x.replace(' ','T')+'Z';const d=new Date(x);return isNaN(d)?null:d}, day=x=>{const d=x&&toD(x);return d?d.toISOString().slice(0,10):null}, isoT=x=>{const d=x&&toD(x);return d?d.toISOString():null};
 const IMG={'garri-5':'img/pack-garri.jpg','elubo-5':'img/pack-yam.jpg','rice':'img/pack-rice.jpg','beans':'img/pack-beans.jpg'};
@@ -5243,13 +5244,13 @@ function applyAccount(u,a){u.consigned=a.stockReceived;u.sold=a.auditedSales;u.r
 const ACT_TEXT={'member.registered':'registered and joined the cooperative','units.reserved':'reserved units','units.confirmed':'units confirmed','payment.confirmed':'confirmed a payment','package.opened':'opened a package','delivery.delivered':'delivery completed','store.audited':'recorded a day-28 audit','remittance.confirmed':'confirmed a remittance','store.reconciled':'reconciled a store account','payout.run':'ran a payout','wallet.withdrawal_paid':'paid a withdrawal','admin.signed_in':'signed in to the console','kyc.verified':'identity verified by Smile ID'};
 const actText=a=>{let d={};try{d=JSON.parse(a.detail||'{}');}catch(e){}return (ACT_TEXT[a.action]||a.action.replace(/[._]/g,' '))+(d.ref?' · '+d.ref:d.code?' · '+d.code:d.name?' · '+d.name:'');};
 
-async function loadPublic(){const [t,p]=await Promise.all([API('/api/terms'),API('/api/packages')]);applyTerms(t);S.stores=p.packages.map(mapPkg);}
+async function loadPublic(){try{const [t,p]=await Promise.all([API('/api/terms'),API('/api/packages')]);applyTerms(t);S.stores=p.packages.map(mapPkg);LV.offline=false;}catch(e){if(e.status!==0)throw e;LV.offline=true;S.stores=[];S.holdings=[];S.deliveries=[];}}
 async function loadMember(){const m=LV.me;const u=mapUser(m);S.users=[u];S.session={userId:u.id};
  if(m.role==='investor'){const [h,w]=await Promise.all([API('/api/holdings'),API('/api/me/wallet')]);S.holdings=h.holdings.map(mapHold);S.tx=w.transactions.map(mapTx);
   const ds=await Promise.all(h.holdings.filter(x=>['active','redeem','closed'].includes(x.status)).map(x=>API('/api/holdings/'+x.id+'/deliveries').then(r=>r.deliveries.map(d=>Object.assign(mapDel(d,null),{holdingId:x.id,toType:'store',toId:x.package.id})))));S.deliveries=ds.flat();}
  else{const [a,ds,rm,cy,sl]=await Promise.all([API('/api/store/account'),API('/api/store/deliveries'),API('/api/store/remittances'),API('/api/store/cycles'),API('/api/store/sales')]);
   applyAccount(u,a.account);applyCycles(u,cy.cycles);a.packages.forEach(p=>{const s=S.stores.find(x=>x.id===p.id);if(s)s.shopId=u.id;else S.stores.push(Object.assign(mapPkg(p),{shopId:u.id}));});
-  S.deliveries=ds.deliveries.map(d=>mapDel(d,u.id));await Promise.all(S.deliveries.filter(d=>d.status===2).map(d=>API('/api/store/deliveries/'+d.id).then(x=>{d.otp=x.delivery.deliveryCode||''}).catch(()=>{})));S.remits=rm.remittances.map(r=>mapRem(r,u.id));S.sreps=sl.sales.map(x=>({id:'sr'+x.id,userId:u.id,amount:Number(x.amount),at:isoT(x.created_at),status:'submitted'}));}}
+  S.deliveries=ds.deliveries.map(d=>mapDel(d,u.id));await Promise.all(S.deliveries.filter(d=>d.status===2).map(d=>API('/api/store/deliveries/'+d.id).then(x=>{d.otp=x.delivery.deliveryCode||''}).catch(()=>{})));S.remits=rm.remittances.map(r=>mapRem(r,u.id));S.sreps=sl.sales.map(x=>{const c=(cy.cycles||[]).find(c=>c.k===x.cycle_k);return {id:'sr'+x.id,userId:u.id,amount:Number(x.amount),at:isoT(x.created_at),status:c&&c.audited_at?'audited':'submitted'};});}}
 async function loadAdmin(){const q=s=>API(s).catch(()=>null);
  const [us,pk,hs,pays,ds,st,rm,pr,wd,wt,em,act,adm,sec,ev,tm,kc,rd]=await Promise.all(['/api/admin/users','/api/admin/packages','/api/admin/holdings','/api/admin/payments','/api/admin/deliveries?full=1&limit=1000','/api/admin/stores','/api/admin/remittances','/api/admin/payouts','/api/admin/withdrawals','/api/admin/wallet-tx','/api/admin/emails?limit=500','/api/admin/activity?limit=200','/api/admin/admins','/api/admin/admins/security','/api/admin/admins/login-events','/api/admin/settings/terms','/api/admin/kyc','/api/admin/redemptions'].map(q));
  if(tm)applyTerms({terms:tm.terms,escrow:tm.escrow});const up=await q('/api/admin/settings/unit-package');if(up)applyTerms({terms:tm.terms,unitPackage:up.unitPackage});
@@ -5278,6 +5279,7 @@ async function liveLoad(){await loadPublic();
 async function refresh(msg){try{await liveLoad();}catch(e){toast(e.message);}render();if(msg)toast(msg);}
 window.liveRefresh=refresh;
 const act=(fn,msg)=>async(...a)=>{if(LV.busy)return;LV.busy=true;try{const out=await fn(...a);if(out!==false){closeModal();await refresh(typeof msg==='function'?msg(out):msg);}}catch(e){toast(e.message);}finally{LV.busy=false;}};
+window.liveAct=act;
 const val=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
 
 /* -------- routing and access -------- */
@@ -5361,7 +5363,7 @@ A.rejectPay=act(async d=>{const h=S.holdings.find(x=>x.id===d.id);if(!h._payId)t
 A.kyc=act(async d=>{await API('/api/admin/users/'+d.id,{method:'PATCH',body:{kycStatus:d.v}});},d=>'Identity '+(d&&d.changed?'updated':'saved')+'.');
 A.kycM=d=>A.kyc(d);
 A.approvePkg=act(async d=>{await API('/api/admin/packages/'+d.id+'/open',{method:'POST',body:{}});},'Package opened. Stock deliveries have been created.');
-A.fxAdv=act(async d=>{await API('/api/admin/deliveries/'+d.id+'/advance',{method:'POST'});},'Delivery moved to the next stage.');
+A.fxAdv=act(async d=>{const x=S.deliveries.find(y=>y.id===d.id);await API('/api/admin/deliveries/'+d.id+'/advance',{method:'POST',body:x?{fromStage:x.status}:{}});},'Delivery moved to the next stage.');
 A.fxForm=d=>{const x=S.deliveries.find(y=>y.id===d.id);if(x.status!==2)return toast('The order must be in transit first.');fxModal(`<div class="mi">${ic('truck')}</div><h2>Complete Order #${esc(x.code)}</h2><p class="ad-sub">Enter the 6-digit delivery code the store manager gives the driver after counting the bags.</p><input class="ad-in" id="dc" inputmode="numeric" maxlength="6" placeholder="000000" style="text-align:center;font-size:22px;letter-spacing:.3em"><div class="acts"><button class="fx-btn light" data-a="close">Cancel</button><button class="fx-btn" data-a="dcGo" data-id="${x.id}">Complete Delivery</button></div>`);};
 A.dcGo=act(async d=>{await API('/api/admin/deliveries/'+d.id+'/complete',{method:'POST',body:{code:val('dc')}});},'Delivery completed.');
 A.fxOverrideGo=act(async d=>{const reason=val('ov-r')||prompt('Reason for completing without the delivery code (at least 10 characters):')||'';await API('/api/admin/deliveries/'+d.id+'/override',{method:'POST',body:{reason}});},'Delivery completed by override. The reason is recorded.');
@@ -5397,6 +5399,32 @@ liveLoad().catch(e=>{console.error(e);}).finally(()=>{LV.booting=false;LV.triedM
 }
 
 {const _fxTs=fxTs;fxTs=function(t,key,step){if(window.LIVE&&LV.ts&&key!=null&&LV.ts[key])return LV.ts[key];return _fxTs(t,key,step)};}
+/* live mode: session end, periodic session check, and a safe page when Tafiki cannot be reached */
+function sessionEnded(){const adm=route().startsWith('admin');if(adm){if(!LV.admin)return;LV.admin=null;LV.perms=[];S.adm=null;location.hash='#console';}else{if(!LV.me)return;LV.me=null;S.session=null;location.hash='#login';}setTimeout(()=>toast('Your session has ended. Please sign in again.'),300);}
+if(window.LIVE){LV.checked=Date.now();window.addEventListener('hashchange',()=>{const r=route();if(Date.now()-LV.checked<60000)return;LV.checked=Date.now();
+  if(r.startsWith('admin')&&LV.admin)API('/api/admin/auth/me').catch(e=>{if(e.status===401)sessionEnded();});
+  else if((r.startsWith('me')||r.startsWith('shop'))&&LV.me)API('/api/me').catch(e=>{if(e.status===401)sessionEnded();});});
+ {const _rG=render;render=function(){try{_rG();if(LV.offline&&!document.getElementById('lv-off')){const b=document.createElement('div');b.id='lv-off';b.className='lv-off';b.innerHTML='Live figures are unavailable right now. <button data-a="lvRetry">Try again</button>';document.getElementById('app').prepend(b);}}
+  catch(e){console.error('render failed',e&&e.stack);document.getElementById('app').innerHTML='<div class="lv-fail"><img src="'+LOGO_C+'" alt="Tafiki" style="height:34px"><h2>Tafiki is taking a short break</h2><p>We could not load this page. Please check your connection and try again in a moment.</p><button class="btn dark" data-a="lvRetry">Try again</button></div>';}};}
+ A.lvRetry=()=>{document.getElementById('app').innerHTML='<div style="min-height:70vh;display:grid;place-items:center;font:500 15px Inter,system-ui,sans-serif;color:#4A5C40">Loading Tafiki…</div>';refresh();};
+ const st=document.createElement('style');st.textContent='.lv-off{background:#FFF4E5;color:#7A4B00;border:1px solid #F3D9B1;border-radius:12px;padding:10px 14px;margin:12px 16px;font-size:14px}.lv-off button{background:none;border:0;color:#1F4D12;font-weight:600;text-decoration:underline;cursor:pointer;padding:0 0 0 6px}.lv-fail{min-height:70vh;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:12px;max-width:440px;margin:0 auto;padding:24px}.lv-fail h2{margin:8px 0 0}.lv-fail p{color:#4A5C40;margin:0}';document.head.appendChild(st);}
+/* live mode: a ribbon while payments or identity checks run on test accounts */
+if(window.LIVE){API('/api/health').then(h=>{const m=h.modes||{};LV.modes=m;const test=[];if(m.payments!=='live')test.push(m.payments==='test'?'Paystack test mode: no real money moves':'Card payments are off');if(m.identity!=='live')test.push(m.identity==='sandbox'?'Smile ID sandbox':'ID checks are off');if(m.sms!=='live')test.push('SMS are logged, not sent');if(m.email!=='live')test.push('emails held in the console outbox');
+ if(!test.length)return;const r=document.createElement('div');r.id='lv-test';r.setAttribute('role','status');r.innerHTML='<b>Test mode</b><span> · '+test.join(' · ')+'</span>';r.title=test.join(' · ');document.body.appendChild(r);
+ const st=document.createElement('style');st.textContent='#lv-test{position:fixed;left:12px;bottom:12px;z-index:9999;max-width:min(560px,calc(100vw - 24px));background:#7A4B00;color:#fff;font:500 12px/1.45 Inter,system-ui,sans-serif;padding:7px 12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.18);opacity:.94;pointer-events:none}@media(max-width:640px){#lv-test{left:50%;transform:translateX(-50%);bottom:92px;padding:5px 12px;border-radius:999px}#lv-test span{display:none}}';document.head.appendChild(st);}).catch(()=>{});}
+/* live mode: package, store and unit-package actions that the console still handled locally */
+if(window.LIVE){const act=window.liveAct;
+ const _ns=A.newStore;A.newStore=d=>{_ns(d);const t=document.getElementById('ns-t');const box=t&&t.closest('.field');if(box&&!document.getElementById('ns-u')){box.insertAdjacentHTML('afterend',`<div class="field"><label for="ns-u">Units</label><input class="input" id="ns-u" type="number" min="1" max="200" value="${S.st.slotsPerStore||40}"></div>`);}};
+ A.addStore=act(async()=>{const v=id=>(document.getElementById(id)||{value:''}).value.trim();let n=v('ns-n');if(!n)throw new Error('Give the package a name.');if(!/^FOODCORE\s/i.test(n))n='FOODCORE '+n;
+  const body={name:n,area:v('ns-a'),city:v('ns-c'),route:v('ns-r')||undefined,targetOpen:v('ns-t')||undefined,unitsTotal:+v('ns-u')||undefined};
+  if(body.area.length<3)throw new Error('Add the junction or landmark (at least 3 letters).');if(body.city.length<2)throw new Error('Add the city.');
+  await API('/api/admin/packages',{method:'POST',body});},'Package added. It is open for reservations.');
+ A.openPkg=act(async d=>{const v=(document.getElementById('op-shop')||{}).value;if(!v)throw new Error('Choose a FOODCORE store.');await API('/api/admin/packages/'+d.id+'/open',{method:'POST',body:{storeUserId:v}});},'Package opened. Stock deliveries have been created.');
+ A.setPkg=act(async d=>{const v=(document.getElementById('op-shop')||{}).value;if(!v)throw new Error('Choose a FOODCORE store.');await API('/api/admin/packages/'+d.id,{method:'PATCH',body:{storeUserId:v}});},'Store assigned to the package.');
+ A.approveShop=act(async d=>{await API('/api/admin/users/'+d.id,{method:'PATCH',body:{kycStatus:'verified'}});},'Store approved. It receives stock once a package is assigned to it.');
+ A.pkSave=act(async()=>{if(typeof PKD==='undefined'||!PKD||!PKD.length)throw new Error('Add at least one product.');const bad=PKD.find(i=>!String(i.name).trim()||!(+i.bags>0)||!(+i.cost>0));if(bad)throw new Error('Each product needs a name, a number of bags and a cost per bag.');
+  await API('/api/admin/settings/unit-package',{method:'PUT',body:{items:PKD.map(i=>({sku:String(i.sku||i.id||i.name).slice(0,40),name:String(i.name).trim(),brand:String(i.brand||'FOODCORE'),size:String(i.size||''),bags:Math.round(+i.bags),cost:Math.round(+i.cost)}))}});PKD=null;},'Unit package saved. New deliveries use it.');
+ A.autoRestock=()=>{if(A.newRun)A.newRun({});};}
 if(!window.LIVE)render();
 </script>
 </body>

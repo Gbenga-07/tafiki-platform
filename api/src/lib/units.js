@@ -62,11 +62,11 @@ async function settle(holdingId, actor) {
   return db('holdings').where({ id: h.id }).first();
 }
 
-async function markPaymentSuccess(payment, { channel, raw, by } = {}) {
+async function markPaymentSuccess(payment, { channel, raw, by, mustWin } = {}) {
   const db = getDb(); const actor = by ? { type: 'admin', id: by } : { type: 'system' };
   // Only the first request to mark this payment successful continues; parallel reports stop here.
   const won = await db('payments').where({ id: payment.id }).whereNotIn('status', ['success', 'refund_due']).update({ status: 'success', channel: channel || payment.channel, raw: raw ? JSON.stringify(raw).slice(0, 60000) : payment.raw, verified_at: now(), confirmed_by: by || null });
-  if (!won) return settle(payment.holding_id, actor);
+  if (!won) { if (mustWin) throw new HttpError(409, 'This payment has already been confirmed.'); return settle(payment.holding_id, actor); }
   let h = await db('holdings').where({ id: payment.holding_id }).first();
   if (h.status === 'cancelled') { // paid after the reservation lapsed: reinstate if the units are still free, otherwise flag a refund
     const reinstated = await db.transaction(async (trx) => {

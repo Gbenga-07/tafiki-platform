@@ -8,7 +8,9 @@
     "migrate": "knex migrate:latest --knexfile knexfile.js",
     "create-admin": "node scripts/create-admin.js",
     "test": "node --test tests/*.test.js",
-    "test:mysql": "TEST_DB=mysql node --test --test-concurrency=1 tests/*.test.js"
+    "test:mysql": "TEST_DB=mysql node --test --test-concurrency=1 tests/*.test.js",
+    "check": "node scripts/check-setup.js",
+    "sim:advance": "node scripts/simulate-time.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

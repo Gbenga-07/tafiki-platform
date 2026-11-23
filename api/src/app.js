@@ -29,7 +29,13 @@ function createApp() {
     router.stack.forEach((l) => { if (l.route) l.route.stack.forEach((h) => { const fn = h.handle; if (fn.length < 4) h.handle = (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next); }); });
     return router;
   };
-  app.get('/api/health', (req, res) => res.json({ ok: true, service: 'tafiki-api', time: new Date().toISOString() }));
+  // modes tell the website whether it is running against test (simulation) or live third-party accounts
+  const modes = () => { const pk = process.env.PAYSTACK_SECRET_KEY || ''; return {
+    payments: !pk ? 'off' : pk.startsWith('sk_live_') ? 'live' : 'test',
+    identity: !process.env.SMILE_PARTNER_ID ? 'off' : process.env.SMILE_ENV === 'production' ? 'live' : 'sandbox',
+    sms: !process.env.TERMII_API_KEY ? 'logged' : 'live',
+    email: process.env.SMTP_HOST ? 'live' : 'outbox' }; };
+  app.get('/api/health', (req, res) => res.json({ ok: true, service: 'tafiki-api', time: new Date().toISOString(), modes: modes() }));
   app.use('/api/auth', authLimit, wrap(require('./routes/auth')));
   app.use('/api/me', wrap(require('./routes/me')));
   app.use('/api/admin/auth', authLimit, wrap(require('./routes/adminAuth')));

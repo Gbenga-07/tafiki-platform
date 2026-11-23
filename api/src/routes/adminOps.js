@@ -29,7 +29,12 @@ r.post('/deliveries', requirePerm('logistics'), async (req, res) => {
   const nd = await ops.createDelivery({ kind: 'store_order', storeUserId: store.id, lines }, me(req));
   res.status(201).json({ delivery: await shape(nd, true) });
 });
-r.post('/deliveries/:id/advance', requirePerm('logistics'), async (req, res) => res.json({ delivery: await shape(await ops.advance(req.params.id, me(req), 'Moved by admin'), true) }));
+r.post('/deliveries/:id/advance', requirePerm('logistics'), async (req, res) => {
+  const from = req.body && Number.isInteger(req.body.fromStage) ? req.body.fromStage : undefined; // stops a double click moving two stages
+  const nd = await ops.advance(req.params.id, me(req), 'Moved by admin', from);
+  if (!nd) throw new HttpError(409, 'This delivery has already moved on. Refresh to see its stage.');
+  res.json({ delivery: await shape(nd, true) });
+});
 r.patch('/deliveries/:id', requirePerm('logistics'), async (req, res) => {
   const d = z.object({ driver: z.string().trim().max(80).optional(), vehicle: z.string().trim().max(40).optional(), auto: z.boolean().optional() }).parse(req.body); await getD(req.params.id);
   await getDb()('deliveries').where({ id: req.params.id }).update(d); await activity.log(me(req), 'delivery.updated', { type: 'delivery', id: req.params.id }, d);
