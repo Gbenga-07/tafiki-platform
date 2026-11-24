@@ -667,6 +667,7 @@ p,.lead,.ticks li span{overflow-wrap:normal;word-break:normal}
 /* reorganised homepage */
 .trust2{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:center}
 .trust2 .brands2{border:0}
+.trust2.trust1{grid-template-columns:1fr}
 .certs2 .logos img.c-haccp{height:54px;mix-blend-mode:multiply}
 .certs2 .logos img.c-lw{height:54px}
 .certs2 .c-fda{width:auto!important;height:44px!important;padding:0 14px;font-size:20px!important;border-radius:10px}
@@ -2307,7 +2308,7 @@ function pHome(){
   ${feat?`<a class="float-card" href="#store-${feat.id}"><span class="eyebrow">Filling now</span><b>${esc(feat.name)}</b><span class="small muted">${freeSlots(feat)} of 40 units open · opens ${esc(feat.target)}</span><div class="bar"><i style="width:${taken(feat)/40*100}%"></i></div></a>`:''}
  </div>
 </div></section>
-<section class="brandstrip"><div class="wrap trust2"><div class="brands2"><span class="small muted">Brands on every ${fcW()} shelf</span><div class="logos"><img src="img/logo-foodhybrid.jpg" alt="Food Hybrid"><span class="sep" aria-hidden="true"></span><img src="img/foodcore-logo.png" alt="Foodcore" class="fc-lg"><span class="sep" aria-hidden="true"></span><img src="img/logo-greenoasis.jpg" alt="Green Oasis Foods"></div></div><div class="brands2 certs2"><span class="small muted">Certified and insured</span><div class="logos"><img src="img/haccp.jpg" alt="HACCP certified" class="c-haccp"><span class="sep" aria-hidden="true"></span><span class="fda c-fda" aria-label="FDA registered">FDA</span><span class="sep" aria-hidden="true"></span><img src="img/leadway-logo.png" alt="Insured in transit by Leadway Assurance" class="c-lw"></div></div></div></section>
+<section class="brandstrip"><div class="wrap trust2 trust1"><div class="brands2"><span class="small muted">Brands on every ${fcW()} shelf</span><div class="logos"><img src="img/logo-foodhybrid.jpg" alt="Food Hybrid"><span class="sep" aria-hidden="true"></span><img src="img/foodcore-logo.png" alt="Foodcore" class="fc-lg"><span class="sep" aria-hidden="true"></span><img src="img/logo-greenoasis.jpg" alt="Green Oasis Foods"></div></div></div></section>
 <section class="band"><div class="wrap">
  <div class="sec-h center"><span class="eyebrow">How investing works</span><h2>Four steps to your first payout.</h2><p>Reserve online, sign on screen, and get paid every 90 days.</p></div>
  ${investorSteps()}
