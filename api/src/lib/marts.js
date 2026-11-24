@@ -28,7 +28,7 @@ async function ensureMart(db, pkg) {
   if (!store) {
     const id = uuid(); const shop = martName(pkg.name);
     await db('users').insert({ id, role: 'retailer', name: shop + ' manager', email: `${slug(pkg.name)}-${id.slice(0, 8)}@${PLACEHOLDER_DOMAIN}`, phone: null, city: pkg.city || null, shop, area: [pkg.area, pkg.city].filter(Boolean).join(', ') || null,
-      password_hash: await pw.hash(crypto.randomBytes(24).toString('hex')), kyc_status: 'pending', status: 'active', created_at: new Date(), updated_at: new Date() });
+      password_hash: await pw.hash(crypto.randomBytes(24).toString('hex')), kyc_status: 'verified', status: 'active', created_at: new Date(), updated_at: new Date() });
     created = true; store = { id };
   }
   await db('packages').where({ id: pkg.id }).whereNull('store_user_id').update({ store_user_id: store.id });
