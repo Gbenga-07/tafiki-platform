@@ -2059,6 +2059,24 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
 .csg-card b{display:block;font:600 18px "Poppins",sans-serif;color:#fff;margin-bottom:6px}.csg-card p{margin:0;font-size:14.5px;line-height:1.55;color:#E8F2DC;text-align:left!important}
 .csg-card.c2 b{color:#1D4107}.csg-card.c2 p{color:#2F4A22}
 @media(max-width:900px){.csg-flow{flex-wrap:wrap}.csg-grid{grid-template-columns:1fr}.csg-arr{display:none}.csg-step{max-width:none;flex:1 1 100%}}
+/* consignment v2: steps as a gold timeline on the green, benefits on a warm ivory panel */
+.csg-step{background:none;border:0;box-shadow:none;padding:6px 4px;gap:14px}
+.csg-step i{width:46px;height:46px;border-radius:15px;color:#fff;background:radial-gradient(130% 70% at 50% -8%,rgba(255,255,255,.42) 0 46%,rgba(255,255,255,0) 49%),linear-gradient(180deg,#F59A4E,#D2691B);border:1.5px solid rgba(255,255,255,.35);box-shadow:inset 0 -3px 0 rgba(0,0,0,.18),0 8px 18px rgba(210,105,27,.35)}
+.csg-step b{color:#F7B27A}
+.csg-step span{color:#F1F7EA;font-size:14px}
+.csg-arr{color:#F59A4E}
+.csg-grid{background:#FBF8F1;border-radius:30px;padding:22px;gap:14px;box-shadow:0 24px 50px rgba(0,0,0,.28),inset 0 1px 0 #fff;counter-reset:csg}
+.csg-card,.csg-card.c0,.csg-card.c1,.csg-card.c2{background:#fff;border:1px solid #ECE5D6;box-shadow:0 6px 16px rgba(60,45,20,.07);border-radius:20px;padding:18px 20px 18px 66px;counter-increment:csg}
+.csg-card::before{content:"✓";left:18px;right:auto;top:18px;width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font:700 16px "Poppins",sans-serif;color:#fff;background:linear-gradient(180deg,#4F8A2A,#1D4107)}
+.csg-card:nth-child(even)::before{background:linear-gradient(180deg,#F59A4E,#D2691B)}
+.csg-card b,.csg-card.c2 b{color:#1D4107;font-size:17px}
+.csg-card p,.csg-card.c2 p{color:#5C6A55}
+@media(max-width:900px){
+ .csg-flow{flex-direction:column;gap:0;margin:28px 0 26px;padding-left:4px}
+ .csg-step{position:relative;padding:8px 0 16px}
+ .csg-step:not(:last-child)::after{content:"";position:absolute;left:22px;top:56px;bottom:-6px;border-left:2px dashed rgba(245,154,78,.55)}
+ .csg-grid{padding:14px;border-radius:26px}
+}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 
 /* KPI cards: glossy 3D, same greens */
