@@ -129,7 +129,7 @@ Open **https://tafiki.com**. A small **"Test mode"** label should show at the bo
 
 | # | Do this | You should see |
 |---|---|---|
-| 1 | Go to **tafiki.com/#console** and sign in with your Super Admin email and password | The console dashboard |
+| 1 | Go to **tafiki.com/control** and sign in with your Super Admin email and password | The console dashboard |
 | 2 | Use **Get started** to register a mart account: "FOODCORE Test", with your second email and phone | Mart portal shows "Your mart is being reviewed" |
 | 3 | In the console, open **Investment Packages → Add package**: name "FOODCORE Test", **2 units** | A funding package, 0 of 2 |
 | 4 | In a private browser window, register as a unit holder with your own email | The Smile ID screen opens |

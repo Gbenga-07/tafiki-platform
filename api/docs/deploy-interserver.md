@@ -86,7 +86,7 @@ With that set, the site:
 - signs members in with email and password against the API (no demo accounts, no prototype bar);
 - creates real accounts and opens Smile ID for identity checks;
 - takes card and bank-debit payments through Paystack, and records bank transfers for Finance to confirm;
-- runs the mart portal and the console (`https://tafiki.com/#console`) from live data, with each admin limited by their role.
+- runs the mart portal and the console (`https://tafiki.com/control`) from live data, with each admin limited by their role.
 
 Leave the value empty to go back to demo mode. Do this after step 7, so the API already has its SSL certificate.
 
