@@ -2846,7 +2846,7 @@ function agreementText(h){const s=store(h.storeId),u=user(h.userId),t=S.st;retur
 <p><b>7. Exit.</b> Minimum hold of ${t.lockMonths} months from opening, then 90 days' notice to redeem at a cycle close.</p>
 <p><b>Cooperative membership.</b> The Unit Holder is a member of Foodcore Multipurpose Cooperative, of which FOODCORE is a member, and agrees to its bye-laws. Membership is a condition of holding units.${mFee()?` A yearly membership fee of ${N(mFee())} is added to the member's first unit purchase each membership year. It is non-refundable, is not unit capital and earns no return.`:''}</p>
 <p><b>8. Insurance.</b> Stock in transit is insured under a goods-in-transit policy with Leadway Assurance Company Limited. Stock on the mart's premises is insured with [Insurer]. Unit holders are named as loss payee where the policies allow.</p>
-<p class="muted">Proposed terms, to confirm with counsel. FOODCORE Stock Units are issued by FOODCORE Multipurpose Cooperative, licensed by the Lagos State MCCTI.</p>
+<p class="muted">FOODCORE Stock Units are issued by FOODCORE Multipurpose Cooperative, licensed by the Lagos State MCCTI.</p>
 ${h.signedName?`<div style="margin-top:6px"><span class="muted">Signed by</span><div class="sig" style="font-size:26px">${esc(h.signedName)}</div><span class="muted">${fd(h.signedAt)} · ${h.ref}</span></div>`:''}</div>`;}
 
 
@@ -5047,7 +5047,7 @@ ${mFee()?`<li><b>Yearly membership fee.</b> Membership carries a fee of ${N(mFee
 let n=0;const toc=parts.map(([k,ti,ss])=>`<div class="tc-tp"><b>Part ${k} · ${ti}</b>${ss.map(([id,h])=>{n++;return `<button type="button" data-a="tcGo" data-id="${id}">${n}. ${h}</button>`;}).join('')}</div>`).join('');
 n=0;const body=parts.map(([k,ti,ss])=>`<div class="tc-part"><span>Part ${k}</span><h2>${ti}</h2></div>${ss.map(([id,h,b])=>{n++;return tcSec(id,n,h,b);}).join('')}`).join('');
 return `<div class="tc tc2"><div class="tc-head"><b>FOODCORE Stock Units on Tafiki</b><span>Terms and Conditions · Version ${TERMS_V2}</span></div>
-<p class="tc-note">Proposed terms, to be reviewed and confirmed by counsel before launch. Please read them carefully: they include cooperative membership, a minimum hold of ${L} months, limited recourse, limits on our liability and an agreement to resolve disputes by mediation and arbitration.</p>
+<p class="tc-note">Please read them carefully: they include cooperative membership, a minimum hold of ${L} months, limited recourse, limits on our liability and an agreement to resolve disputes by mediation and arbitration.</p>
 <div class="tc-toc"><div class="tc-th">Contents</div>${toc}</div>${body}
 <p class="tc-end">By ticking "I agree with the Terms and Conditions" you confirm that you have read and understood these Terms, that you agree to become a member of FOODCORE Multipurpose Cooperative, and that you agree to be bound by these Terms.</p></div>`;}
 A.tcGo=d=>{const el=document.getElementById('tc-'+d.id);if(!el)return;const sc=el.closest('#tc-scroll,.modal-b');if(sc){sc.scrollTo({top:sc.scrollTop+el.getBoundingClientRect().top-sc.getBoundingClientRect().top-8,behavior:'smooth'});}else el.scrollIntoView({behavior:'smooth',block:'start'});};
