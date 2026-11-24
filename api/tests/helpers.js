@@ -16,7 +16,7 @@ async function setup(opts = {}) {
     const name = process.env.TEST_DB_NAME || 'tafiki_test';
     const root = knexLib({ client: 'mysql2', connection: conn }); await root.raw('DROP DATABASE IF EXISTS ??', [name]); await root.raw('CREATE DATABASE ?? CHARACTER SET utf8mb4', [name]); await root.destroy();
     k = knexLib({ client: 'mysql2', connection: { ...conn, database: name }, migrations: require('../knexfile').migrations });
-  } else k = knexLib({ ...require('../knexfile'), connection: { filename: ':memory:' }, pool: { min: 1, max: 1 } });
+  } else k = knexLib({ ...require('../knexfile'), connection: { filename: process.env.TEST_DB_FILE || ':memory:' }, pool: { min: 1, max: 1 } }); // TEST_DB_FILE keeps the result for a look in the browser
   setDb(k); await k.migrate.latest();
   if (!opts.membershipFee) await k('settings').insert({ key: 'terms', value: JSON.stringify({ membershipFee: 0 }) });
   const app = createApp();

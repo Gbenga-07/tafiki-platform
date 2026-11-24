@@ -19,7 +19,10 @@ r.post('/packages', requirePerm('packages'), async (req, res) => {
   const d = Pkg.parse(req.body); const t = await getTerms(); const id = uuid();
   await getDb()('packages').insert({ id, name: d.name, area: d.area, city: d.city, state: d.state || 'Oyo', route: d.route || null, target_open: d.targetOpen || null, units_total: d.unitsTotal || t.unitsPerPackage, store_user_id: d.storeUserId && (await getDb()('users').where({ id: d.storeUserId, role: 'retailer' }).first()) ? d.storeUserId : null });
   await activity.log(me(req), 'package.created', { type: 'package', id }, { name: d.name });
-  res.status(201).json({ package: await shape(await getDb()('packages').where({ id }).first()) });
+  const made = await require('../lib/marts').ensureMart(getDb(), await getDb()('packages').where({ id }).first());
+  if (made.created) await activity.log(me(req), 'mart.auto_created', { type: 'user', id: made.store.id }, { package: id, shop: made.store.shop });
+  const pkg = await getDb()('packages').where({ id }).first();
+  res.status(201).json({ package: { ...(await shape(pkg)), storeUserId: pkg.store_user_id }, mart: { id: made.store.id, name: made.store.shop, created: made.created } });
 });
 r.patch('/packages/:id', requirePerm('packages'), async (req, res) => {
   const d = Pkg.partial().parse(req.body); const db = getDb(); const p = await db('packages').where({ id: req.params.id }).first(); if (!p) throw new HttpError(404, 'Package not found.');

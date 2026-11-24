@@ -123,11 +123,10 @@ async function openPackage(packageId, storeUserId, actor) {
   if (p.stage === 'trading') throw bad('This package is already trading.');
   const confirmed = await unitsConfirmed(p.id);
   if (confirmed < p.units_total) throw bad(`Only ${confirmed} of ${p.units_total} units are confirmed. A package opens when every unit is confirmed.`);
-  let storeId = storeUserId || p.store_user_id;
-  if (!storeId) { const s = await db('users').where({ role: 'retailer', shop: p.name }).first(); storeId = s && s.id; }
-  if (!storeId) throw bad('Choose the FOODCORE Mart for this package. The mart must have an account.');
-  const store = await db('users').where({ id: storeId, role: 'retailer' }).first();
-  if (!store) throw bad('That FOODCORE Mart account was not found.');
+  let store;
+  if (storeUserId) { store = await db('users').where({ id: storeUserId, role: 'retailer' }).first(); if (!store) throw bad('That FOODCORE Mart account was not found.'); }
+  else { const made = await require('./marts').ensureMart(db, p); store = made.store; if (made.created) await activity.log(actor, 'mart.auto_created', { type: 'user', id: store.id }, { package: p.id, shop: store.shop }); }
+  const storeId = store.id;
   const won = await db('packages').where({ id: p.id }).whereIn('stage', ['funding', 'full']).update({ stage: 'trading', store_user_id: storeId, opened_at: now() });
   if (!won) throw new HttpError(409, 'This package has just been opened.');
   const hs = await db('holdings').where({ package_id: p.id, status: 'reserved' });

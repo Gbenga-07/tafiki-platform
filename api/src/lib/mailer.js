@@ -21,6 +21,7 @@ async function sendEmail({ to, name, category, subject, paragraphs, ref }) {
   const text = [`Hello ${name || 'there'},`, ...paragraphs, 'Kind regards,', 'Tafiki Operations'].join('\n\n');
   const html = layout(name, paragraphs);
   await db('emails').insert({ id, to_email: to, to_name: name || null, category, subject, body_text: text, body_html: html, ref: ref || null, status: 'queued', created_at: new Date() });
+  if (require('./marts').isPlaceholderEmail(to)) { await db('emails').where({ id }).update({ status: 'skipped', error: 'Mart manager email not set yet' }); return { id, status: 'skipped' }; }
   const t = getTransport();
   if (!t) { await db('emails').where({ id }).update({ status: 'logged' }); return { id, status: 'logged' }; }
   try {

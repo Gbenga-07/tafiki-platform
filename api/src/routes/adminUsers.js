@@ -45,6 +45,10 @@ r.patch('/:id', requirePerm('members'), async (req, res) => {
   await db('users').where({ id: u.id }).update({ ...upd, updated_at: new Date() });
   await activity.log(me(req), 'member.edited_by_admin', { type: 'user', id: u.id }, { fields: changed });
   if (changed.includes('kyc_status') && upd.kyc_status === 'verified') await require('../lib/units').onKycVerified(u.id, me(req));
+  if (upd.email && require('../lib/marts').isPlaceholderEmail(u.email) && !require('../lib/marts').isPlaceholderEmail(upd.email)) {
+    await sendEmail({ to: upd.email, name: (upd.name || u.name).split(' ')[0], category: 'account', subject: `You now manage ${upd.shop || u.shop} on Tafiki`, ref: u.id, paragraphs: [`Tafiki has set you up as the manager of ${upd.shop || u.shop}.`, `To sign in, go to ${config.appUrl}/#login, choose "Forgot your password?" and enter this email to set your password.`, 'Your mart portal shows incoming deliveries, delivery codes, sales and remittances.'] });
+    return res.json({ user: present.userFull(await db('users').where({ id: u.id }).first()), changed });
+  }
   const fields = changed.map((k) => LABELS[k]).join(', ');
   for (const to of [...new Set([u.email, upd.email || u.email])]) await sendEmail({ to, name: u.name.split(' ')[0], category: 'account', subject: 'Your Tafiki account details were updated', ref: u.id, paragraphs: [`The following details on your account were updated by Tafiki: ${fields}.`, 'If you did not request this, contact support@tafiki.com straight away.'] });
   res.json({ user: present.userFull(await db('users').where({ id: u.id }).first()), changed });

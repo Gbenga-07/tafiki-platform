@@ -4881,7 +4881,7 @@ function faStock(){const shops=S.users.filter(u=>u.role==='retailer'&&shopPkgs(u
 /* FOODCORE LOCATION PINS */
 
 function fpNames(){const n=new Set();S.users.filter(u=>u.role==='retailer'&&u.shop).forEach(u=>n.add(u.shop));(S.stores||[]).forEach(x=>n.add(x.name||''));(typeof LOCATIONS!=='undefined'?LOCATIONS:[]).forEach(l=>n.add('FOODCORE '+String(l[0]).replace(/<[^>]*>/g,'')));
- return [...new Set([...n].filter(x=>/^FOODCORE\s+\S/i.test(x)&&!/^FOODCORE\s+(store|stores|mart|marts|cooperative|multipurpose|partner|stock)/i.test(x)).map(x=>x.replace(/^FOODCORE\s+/i,'').trim()))].sort((a,b)=>b.length-a.length);}
+ return [...new Set([...n].filter(x=>/^FOODCORE\s+\S/i.test(x)&&!/^FOODCORE\s+(store|stores|mart|marts|cooperative|multipurpose|partner|stock)\s*$/i.test(x)&&!/^FOODCORE\s+(mart|store)\s+units?\b/i.test(x)).map(x=>x.replace(/^FOODCORE\s+/i,'').trim()))].sort((a,b)=>b.length-a.length);}
 let FP_BUSY=0;
 function fpScan(root){if(FP_BUSY)return;const names=fpNames();if(!names.length)return;FP_BUSY=1;
  try{const re=new RegExp('((?<![A-Za-z])(?:FOODCORE|Foodcore|foodcore)\\s+(?:'+names.map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+'))(?![A-Za-z])','g'),skip=/^(SCRIPT|STYLE|OPTION|SELECT|TEXTAREA|INPUT|TITLE|svg|text|tspan)$/i;
