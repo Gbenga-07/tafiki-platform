@@ -2400,7 +2400,7 @@ function fundingSlides(id){
  if(!fs.length)return '';
  const mine=route().startsWith('me')&&S.session&&S.session.userId;
  return `<div class="fslides" id="${id}"><div class="fs-track">${fs.map((s,i)=>{const t=taken(s),f=freeSlots(s),pc=t/40;return `<article class="fs-card">
-  <div class="fs-top"><span class="chip gold">${pc>=.75?'Almost full':pc>=.4?'Filling fast':'Now open'}</span><span class="small muted">${esc(s.route)} route</span></div>
+  <div class="fs-top"><span class="chip gold">${pc>=.75?'Almost full':pc>=.4?'Filling fast':'Now open'}</span><span class="small muted">${s.route?esc(s.route)+' route':''}</span></div>
   <h3>${fcName(s)}</h3><p class="small muted loc-l">${esc(s.area)}, ${esc(s.city)} · opens ${esc(s.target)}</p>
   ${slotGrid(s,mine)}
   <div class="fs-stats"><div><b class="num">${f}</b><span>units open</span></div><div><b class="num">${Math.round(pc*100)}%</b><span>funded</span></div><div><b class="num">${M(f*S.st.slotPrice)}</b><span>left to raise</span></div></div>
@@ -2450,7 +2450,7 @@ function pStore(s){
   const f=freeSlots(s),q=perSlotQ();
   const perf=s.stage==='trading'?`<div class="card stack"><h3>How this mart is doing</h3><dl class="kv num"><dt>Daily sales, 30-day average</dt><dd>${M(s.salesDay)}</dd><dt>Daily sales that cover all payouts</dt><dd>${M(payLine())}</dd><dt>Stock and cash cover</dt><dd>${pct(cover(s),0)}</dd><dt>Payouts made</dt><dd>${S.payouts.filter(p=>p.storeId===s.id).length}</dd><dt>Next cycle closes</dt><dd>${fd(nextCycle(s))}</dd></dl></div>`:'';
   return `<section class="on-dark band tight"><div class="wrap grid g2" style="align-items:center;gap:36px">
- <div><a href="#invest" class="small muted">← All marts</a><div class="row" style="margin-top:14px">${stageChip(s)}<span class="muted small">${esc(s.route)} route · ${ROUTES[s.route]||''} deliveries</span></div>
+ <div><a href="#invest" class="small muted">← All marts</a><div class="row" style="margin-top:14px">${stageChip(s)}<span class="muted small">${s.route?esc(s.route)+' route · '+(ROUTES[s.route]||'')+' deliveries':''}</span></div>
  <h1 style="font-size:clamp(34px,5vw,54px);margin:12px 0 8px">${fcName(s)}</h1><p class="muted loc-l" style="font-size:17px">${esc(s.area)}, ${esc(s.city)}, ${esc(s.state)} State</p>
  <div class="stats"><div class="stat"><b class="num">${f}</b><span>units open</span></div><div class="stat"><b>${M(q)}</b><span>target per unit, each quarter</span></div><div class="stat"><b>${s.stage==='trading'?fd(s.opened):esc(s.target)}</b><span>${s.stage==='trading'?'opened':'target opening'}</span></div></div>
  ${f>0?`<button class="btn gold" data-a="startInvest" data-id="${s.id}">Reserve units in this mart</button>`:'<span class="chip ok">Fully funded</span>'}</div>
@@ -2683,7 +2683,7 @@ function aStores(){
    if(s.stage==='funding')next=c>=40?`<button class="btn gold sm" data-a="approvePkg" data-id="${s.id}">Approve And Open</button>`:`<span class="small muted">${40-c} confirmed units to go${t>c?' · '+(t-c)+' awaiting payment':''}</span>`;
    else if(s.stage==='fitout')next=`<button class="btn gold sm" data-a="approvePkg" data-id="${s.id}">Approve And Open</button>`;
    else if(s.stage==='trading')next=shopFor(s)?'':`<button class="btn gold sm" data-a="approvePkg" data-id="${s.id}">Link FOODCORE Mart</button>`;
-   return `<div class="card grid" style="grid-template-columns:minmax(0,1fr) 260px;gap:24px;align-items:start"><div class="stack"><div class="row between"><div><h3 style="font-size:22px">${fcName(s)}</h3><p class="small muted loc-l">${esc(s.area)}, ${esc(s.city)} · ${esc(s.route)} route</p></div><div class="row">${stageChip(s)}${coverChip(s)}</div></div>
+   return `<div class="card grid" style="grid-template-columns:minmax(0,1fr) 260px;gap:24px;align-items:start"><div class="stack"><div class="row between"><div><h3 style="font-size:22px">${fcName(s)}</h3><p class="small muted loc-l">${esc(s.area)}, ${esc(s.city)}${s.route?' · '+esc(s.route)+' route':''}</p></div><div class="row">${stageChip(s)}${coverChip(s)}</div></div>
    ${s.stage==='trading'?`<div class="grid g4"><div><div class="small muted">Shelf stock</div><b class="num">${M(stockValue(s))}</b></div><div><div class="small muted">In transit</div><b class="num">${M(transitValue(s))}</b></div><div><div class="small muted">Takings and pipeline cash</div><b class="num">${M(s.cash)}</b></div><div><div class="small muted">Payout reserve</div><b class="num">${M(s.reserve)}</b></div></div>
    <div class="row"><button class="btn ghost sm" data-a="recount" data-id="${s.id}">Record monthly count</button><button class="btn ghost sm" data-a="go" data-r="admin-stock">Stock</button><button class="btn ghost sm" data-a="go" data-r="admin-payouts">Run payout</button><span class="small muted">Last count ${fd(s.counted)} · daily sales ${M(s.salesDay)}</span></div>`
    :`<dl class="kv num" style="max-width:420px"><dt>Units confirmed</dt><dd>${c} of 40</dd><dt>Awaiting payment</dt><dd>${t-c}</dd><dt>Capital in escrow</dt><dd>${N(c*S.st.slotPrice)}</dd><dt>Target opening</dt><dd>${esc(s.target)}</dd></dl>`}
@@ -4366,7 +4366,7 @@ function fundingSlides(id){
  if(!fs.length)return '';
  const mine=route().startsWith('me')&&S.session&&S.session.userId;
  return `<div class="fslides" id="${id}"><div class="fs-track">${fs.map(s=>{const t=taken(s),f=freeSlots(s),pc=t/S.st.slotsPerStore,tag=pc>=.75?'Almost Full':pc>=.4?'Filling Fast':'Now Open';return `<article class="fs-card fv">
-  <div class="fv-head"><div class="fv-top"><span class="fv-chip"><i></i>${tag}</span><span class="fv-route">${esc(s.route)} route</span></div>
+  <div class="fv-head"><div class="fv-top"><span class="fv-chip"><i></i>${tag}</span><span class="fv-route">${s.route?esc(s.route)+' route':''}</span></div>
    <h3>${fcName(s)}</h3><p class="fv-loc">${esc(s.area)}, ${esc(s.city)}</p><span class="fv-open">Opens ${esc(s.target)}</span></div>
   <div class="fv-body"><div class="fv-ring" style="--p:${Math.round(pc*100)}"><div><b class="num">${Math.round(pc*100)}%</b><span>funded</span></div></div>
    <div class="fv-grid">${slotGrid(s,mine)}<small><b>${t}</b> of ${S.st.slotsPerStore} units taken</small></div></div>
@@ -5335,6 +5335,12 @@ const mapPkg=p=>({id:p.id,name:p.name,area:p.area,city:p.city,state:p.state||'',
 /* package counts come from the server, not from holdings in this browser */
 const _taken=taken,_free=freeSlots,_conf=confirmedSlots;
 taken=s=>s&&s._taken!=null?s._taken:_taken(s);freeSlots=s=>s&&s._taken!=null?Math.max(0,(s._total||S.st.slotsPerStore)-s._taken):_free(s);confirmedSlots=s=>s&&s._confirmed!=null?s._confirmed:_conf(s);
+/* unit grid from server counts: a visitor's browser has no one else's holdings, so fill the grid from the package totals */
+const _slotGrid=slotGrid;slotGrid=function(s,mineId){if(!s||s._taken==null)return _slotGrid(s,mineId);
+ const per=s._total||S.st.slotsPerStore,mineN=mineId?S.holdings.filter(h=>h.storeId===s.id&&h.userId===mineId&&HELD.includes(h.status)).reduce((a,h)=>a+h.slots,0):0;
+ const t=Math.min(per,s._taken),conf=Math.min(t,s._confirmed!=null?s._confirmed:t),mine=Math.min(t,mineN),paid=Math.max(0,conf-mine),pend=Math.max(0,t-mine-paid),out=[];
+ for(let k=0;k<mine;k++)out.push('mine');for(let k=0;k<paid;k++)out.push('');for(let k=0;k<pend;k++)out.push('pend');while(out.length<per)out.push('free');
+ return `<div class="slots" role="img" aria-label="${t} of ${per} units taken">${out.map(c=>`<i class="${c}"></i>`).join('')}</div>`;};
 const _dValue=dValue;dValue=d=>d&&d._value!=null?d._value:_dValue(d);
 const tsOf=x=>{const d=x&&toD(x);return d?+d:0}, regTs=(k,x)=>{const v=tsOf(x);if(v){(LV.ts=LV.ts||{})[k]=v}};
 const mapUser=u=>(regTs(u.id,u.createdAt),{id:u.id,memberUntil:day(u.membershipUntil||u.membership_until)||null,name:u.name,email:u.email,phone:u.phone,city:u.city||'—',role:u.role,kyc:u.kycStatus,joined:day(u.createdAt)||today(),bank:u.bank?u.bank.name+' ••'+(u.bank.accountLast4||String(u.bank.account||'').slice(-4)):null,bankAcct:u.bank?{bank:u.bank.name,number:u.bank.account||'',name:u.bank.accountName}:null,acct:u.bank&&u.bank.account,aname:u.bank&&u.bank.accountName,coop:u.coop?{member:true,agreedAt:isoT(u.coop.agreedAt),terms:u.coop.termsVersion,no:u.coop.number}:null,shop:u.shop,area:u.area,route:'',limit:0,consigned:0,sold:0,remitted:0,status:u.status,mustChange:u.mustChangePassword,created:true});
