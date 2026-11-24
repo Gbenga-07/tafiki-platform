@@ -26,7 +26,7 @@ r.get('/:id', async (req, res) => {
   const log = await getDb()('activity_log').where({ target_type: 'user', target_id: u.id }).orderBy('id', 'desc').limit(50);
   res.json({ user: present.userFull(u), activity: log });
 });
-const LABELS = { name: 'name', email: 'email', phone: 'phone', city: 'city', shop: 'store name', area: 'store address', bank_name: 'bank', bank_account: 'account number', bank_account_name: 'account name', kyc_status: 'verification status' };
+const LABELS = { name: 'name', email: 'email', phone: 'phone', city: 'city', shop: 'mart name', area: 'mart address', bank_name: 'bank', bank_account: 'account number', bank_account_name: 'account name', kyc_status: 'verification status' };
 const Edit = z.object({ name: z.string().trim().min(3).max(120).optional(), email: z.string().trim().email().optional(), phone: z.string().trim().max(40).optional(), city: z.string().trim().max(80).optional(),
   shop: z.string().trim().max(120).optional(), area: z.string().trim().max(160).optional(), kycStatus: z.enum(['pending', 'verified', 'rejected']).optional(),
   bank: z.object({ name: z.string().trim().max(80), account: z.string().regex(/^(\d{10})?$/), accountName: z.string().trim().max(120) }).optional() });
@@ -38,7 +38,7 @@ r.patch('/:id', requirePerm('members'), async (req, res) => {
   if (d.email) upd.email = lower(d.email);
   if (d.kycStatus) upd.kyc_status = d.kycStatus;
   if (d.bank) Object.assign(upd, { bank_name: d.bank.name || null, bank_account: d.bank.account || null, bank_account_name: d.bank.accountName || null });
-  if (upd.shop && u.role === 'retailer' && !/^FOODCORE\s+\S/i.test(upd.shop)) throw bad('Store names start with FOODCORE.');
+  if (upd.shop && u.role === 'retailer' && !/^FOODCORE\s+\S/i.test(upd.shop)) throw bad('Mart names start with FOODCORE.');
   if (upd.email && upd.email !== u.email && (await db('users').where({ email: upd.email }).first())) throw new HttpError(409, 'That email is used by another account.');
   const changed = Object.keys(upd).filter((k) => String(u[k] ?? '') !== String(upd[k] ?? ''));
   if (!changed.length) return res.json({ user: present.userFull(u), changed: [] });

@@ -1,6 +1,6 @@
 # Tafiki platform: notes for Claude
 
-This repository runs tafiki.com: the public website, the investor portal, the FOODCORE store portal and the admin console, plus the API behind them.
+This repository runs tafiki.com: the public website, the investor portal, the FOODCORE Mart portal and the admin console, plus the API behind them.
 
 ## Layout
 - `web/index.html`: the whole website as one file (with `web/img/`). It runs in **demo mode** when the `<meta name="tafiki-api" content="">` tag near the top is empty, and in **live mode** when it holds the API address (`https://api.tafiki.com`).
@@ -25,4 +25,4 @@ This repository runs tafiki.com: the public website, the investor portal, the FO
 5. **Stay in scope.** Do not change the investment terms, payout formula, yearly membership fee or legal text. Those are set in the console by the owner and confirmed by counsel.
 6. After code changes, run `npm test` and keep it at 0 failures before restarting.
 7. The yearly cooperative membership fee (default ₦50,000) is charged only on a member's first stake payment of each membership year. It is never unit capital: it must not count toward capital, returns, payouts or redemptions, and it is non-refundable (see `api/src/lib/membership.js`).
-8. Do not put the word "investor" in the store portal or store emails.
+8. Do not put the word "investor" in the mart portal or mart emails.

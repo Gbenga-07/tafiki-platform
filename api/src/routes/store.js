@@ -7,7 +7,7 @@ const { requireUser } = require('../lib/auth');
 const ops = require('../lib/ops');
 const box = require('../lib/secretbox');
 const r = express.Router();
-r.use(requireUser, (req, res, next) => (req.user.role === 'retailer' ? next() : next(new HttpError(403, 'This is for FOODCORE store accounts.'))));
+r.use(requireUser, (req, res, next) => (req.user.role === 'retailer' ? next() : next(new HttpError(403, 'This is for FOODCORE Mart accounts.'))));
 const shapeD = async (d, withCode) => ({ id: d.id, code: d.code, kind: d.kind, cycle: d.cycle, stage: d.status, stageName: ops.STAGES[d.status], driver: d.driver, vehicle: d.vehicle, value: Number(d.value), deliveredAt: d.delivered_at, createdAt: d.created_at,
   lines: await getDb()('delivery_lines').where({ delivery_id: d.id }).select('sku', 'name', 'size', 'brand', 'qty'), log: await getDb()('delivery_log').where({ delivery_id: d.id }).select('stage', 'at'),
   deliveryCode: withCode && d.status < 3 ? box.open(d.code_enc) : undefined });

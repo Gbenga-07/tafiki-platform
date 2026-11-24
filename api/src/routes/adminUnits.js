@@ -25,9 +25,9 @@ r.patch('/packages/:id', requirePerm('packages'), async (req, res) => {
   const d = Pkg.partial().parse(req.body); const db = getDb(); const p = await db('packages').where({ id: req.params.id }).first(); if (!p) throw new HttpError(404, 'Package not found.');
   const upd = {}; for (const [k, c] of [['name', 'name'], ['area', 'area'], ['city', 'city'], ['state', 'state'], ['route', 'route'], ['targetOpen', 'target_open']]) if (d[k] !== undefined) upd[c] = d[k];
   if (d.unitsTotal !== undefined) { const taken = await units.unitsTaken(p.id); if (d.unitsTotal < taken) throw bad(`${taken} units are already taken.`); upd.units_total = d.unitsTotal; }
-  if (d.storeUserId !== undefined) { // assign the FOODCORE store that will receive this package's stock
-    const st = await db('users').where({ id: d.storeUserId, role: 'retailer' }).first(); if (!st) throw bad('That FOODCORE store account was not found.');
-    if (p.stage === 'trading' && p.store_user_id && p.store_user_id !== st.id) throw bad('This package is already trading with another store.');
+  if (d.storeUserId !== undefined) { // assign the FOODCORE Mart that will receive this package's stock
+    const st = await db('users').where({ id: d.storeUserId, role: 'retailer' }).first(); if (!st) throw bad('That FOODCORE Mart account was not found.');
+    if (p.stage === 'trading' && p.store_user_id && p.store_user_id !== st.id) throw bad('This package is already trading with another mart.');
     upd.store_user_id = st.id;
   }
   if (Object.keys(upd).length) await db('packages').where({ id: p.id }).update(upd);

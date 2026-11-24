@@ -23,7 +23,7 @@ r.get('/deliveries', async (req, res) => {
 r.get('/deliveries/:id', async (req, res) => res.json({ delivery: await shape(await getD(req.params.id), true) }));
 r.post('/deliveries', requirePerm('logistics'), async (req, res) => {
   const d = z.object({ storeUserId: z.string(), items: z.array(z.object({ sku: z.string(), qty: z.number().int().min(1) })).min(1) }).parse(req.body);
-  const store = await getDb()('users').where({ id: d.storeUserId, role: 'retailer' }).first(); if (!store) throw bad('Choose a FOODCORE store.');
+  const store = await getDb()('users').where({ id: d.storeUserId, role: 'retailer' }).first(); if (!store) throw bad('Choose a FOODCORE Mart.');
   const pk = await getUnitPackage();
   const lines = d.items.map((i) => { const it = pk.items.find((x) => x.sku === i.sku); if (!it) throw bad('Unknown product ' + i.sku); return { sku: it.sku, name: it.name, size: it.size, brand: it.brand, qty: i.qty, unit_cost: it.cost }; });
   const nd = await ops.createDelivery({ kind: 'store_order', storeUserId: store.id, lines }, me(req));
@@ -56,7 +56,7 @@ r.post('/deliveries/:id/reissue-code', requirePerm('logistics'), async (req, res
 
 r.get('/stores', async (req, res) => { const ss = await getDb()('users').where({ role: 'retailer' }).orderBy('shop'); res.json({ stores: await Promise.all(ss.map(async (s) => ({ id: s.id, name: s.shop, manager: s.name, area: s.area, kycStatus: s.kyc_status, account: await ops.storeAccount(s.id) }))) }); });
 r.get('/stores/:id', async (req, res) => {
-  const db = getDb(); const s = await db('users').where({ id: req.params.id, role: 'retailer' }).first(); if (!s) throw new HttpError(404, 'Store not found.');
+  const db = getDb(); const s = await db('users').where({ id: req.params.id, role: 'retailer' }).first(); if (!s) throw new HttpError(404, 'Mart not found.');
   res.json({ store: { id: s.id, name: s.shop, manager: s.name, area: s.area, phone: s.phone, email: s.email }, account: await ops.storeAccount(s.id), cycles: await db('store_cycles').where({ store_user_id: s.id }).orderBy('k', 'desc'), remittances: await db('remittances').where({ store_user_id: s.id }).orderBy('created_at', 'desc'), sales: await db('sales_reports').where({ store_user_id: s.id }).orderBy('id', 'desc').limit(50), packages: await db('packages').where({ store_user_id: s.id }) });
 });
 r.post('/stores/:id/audit', requirePerm('audit'), async (req, res) => res.json({ cycle: await ops.recordAudit(req.params.id, z.number().int().min(0).parse(req.body && req.body.auditedValue), me(req)) }));

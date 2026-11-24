@@ -23,10 +23,10 @@ async function holdersOf(d) {
 async function notifyStage(d) {
   const db = getDb(); const store = await db('users').where({ id: d.store_user_id }).first();
   const st = STAGES[d.status]; const drv = d.driver ? ` Driver: ${d.driver}${d.vehicle ? ' (' + d.vehicle + ')' : ''}.` : '';
-  const storeLines = { 0: [`A stock order (#${d.code}, ${N(d.value)}) has been raised for ${store.shop}.`], 1: [`Order #${d.code} has been collected from the Tafiki Distribution Centre.${drv}`], 2: [`Order #${d.code} is on its way to ${store.shop}.${drv}`, 'Count the bags before you give the driver your delivery code. Your code is in your store portal and by SMS.'], 3: [`Order #${d.code} was delivered and confirmed with your delivery code. The stock has been added to your consignment account.`] }[d.status];
-  await sendEmail({ to: store.email, name: 'Store Manager', category: 'delivery', ref: d.code, subject: `Order #${d.code}: ${st}`, paragraphs: storeLines });
+  const storeLines = { 0: [`A stock order (#${d.code}, ${N(d.value)}) has been raised for ${store.shop}.`], 1: [`Order #${d.code} has been collected from the Tafiki Distribution Centre.${drv}`], 2: [`Order #${d.code} is on its way to ${store.shop}.${drv}`, 'Count the bags before you give the driver your delivery code. Your code is in your mart portal and by SMS.'], 3: [`Order #${d.code} was delivered and confirmed with your delivery code. The stock has been added to your consignment account.`] }[d.status];
+  await sendEmail({ to: store.email, name: 'Mart Manager', category: 'delivery', ref: d.code, subject: `Order #${d.code}: ${st}`, paragraphs: storeLines });
   if (d.status === 2) { const code = box.open(d.code_enc); await sendSms({ to: store.phone, category: 'delivery_code', ref: d.code, mask: code, text: `Tafiki: Order ${d.code} is on its way to ${store.shop}. Count the bags, then give the driver this delivery code: ${code}. Never share it before delivery.` }); }
-  for (const u of await holdersOf(d)) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'delivery', ref: d.code, subject: `Order #${d.code}: ${st}`, paragraphs: [d.status === 3 ? `Your stock (${N(d.value)}) was delivered to ${store.shop} and confirmed by the store. It is now on the shelf and trading.` : `Your stock order for ${store.shop} is now at the "${st}" stage.`] });
+  for (const u of await holdersOf(d)) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'delivery', ref: d.code, subject: `Order #${d.code}: ${st}`, paragraphs: [d.status === 3 ? `Your stock (${N(d.value)}) was delivered to ${store.shop} and confirmed by the mart. It is now on the shelf and trading.` : `Your stock order for ${store.shop} is now at the "${st}" stage.`] });
 }
 async function logStage(d, stage, note, actor) { await getDb()('delivery_log').insert({ delivery_id: d.id, stage, note: note || null, actor: actor || 'system', at: new Date() }); }
 
@@ -59,7 +59,7 @@ async function advance(id, actor, note, expectStatus) {
   const db = getDb(); const d = await db('deliveries').where({ id }).first();
   if (!d) throw new HttpError(404, 'Delivery not found.');
   if (expectStatus !== undefined && d.status !== expectStatus) return null;
-  if (d.status >= 2) throw bad(d.status === 3 ? 'This delivery is complete.' : 'The last step needs the store’s delivery code.');
+  if (d.status >= 2) throw bad(d.status === 3 ? 'This delivery is complete.' : 'The last step needs the mart’s delivery code.');
   if (!(await db('deliveries').where({ id, status: d.status }).update({ status: d.status + 1, delay_minutes: 0 }))) { if (expectStatus !== undefined) return null; throw bad('This delivery has just moved on.'); }
   const nd = await db('deliveries').where({ id }).first();
   await logStage(nd, nd.status, note, actor ? actor.type + ':' + actor.id : 'auto');
@@ -95,7 +95,7 @@ async function completeWithCode(d, code, by) {
   if (sha256(d.id + '|' + String(code || '').trim()) !== d.code_hash) {
     await db('deliveries').where({ id: d.id }).increment('code_attempts', 1);
     const fresh = await db('deliveries').where({ id: d.id }).first();
-    if (fresh.code_attempts === L.maxCodeAttempts) { await activity.log(null, 'delivery.code_locked', { type: 'delivery', id: d.id }, { code: d.code }); const admins = await db('admins').where({ status: 'active' }).whereIn('role', ['Super Admin', 'Operations Manager', 'Logistics Officer']); for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: d.code, subject: `Delivery #${d.code} locked after wrong codes`, paragraphs: ['Too many wrong delivery codes were entered. Contact the store and driver, then reissue the code or complete the delivery with a reason.'] }); }
+    if (fresh.code_attempts === L.maxCodeAttempts) { await activity.log(null, 'delivery.code_locked', { type: 'delivery', id: d.id }, { code: d.code }); const admins = await db('admins').where({ status: 'active' }).whereIn('role', ['Super Admin', 'Operations Manager', 'Logistics Officer']); for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: d.code, subject: `Delivery #${d.code} locked after wrong codes`, paragraphs: ['Too many wrong delivery codes were entered. Contact the mart and driver, then reissue the code or complete the delivery with a reason.'] }); }
     throw bad('That delivery code is not correct.');
   }
   return markDelivered(d, { by }, null);
@@ -123,14 +123,14 @@ async function storeAccount(storeUserId) {
 
 async function recordAudit(storeUserId, value, actor) {
   const db = getDb(); const c = await db('store_cycles').where({ store_user_id: storeUserId }).orderBy('k', 'desc').first();
-  if (!c || c.restock_released_at) throw bad('This store has no cycle waiting for an audit.');
+  if (!c || c.restock_released_at) throw bad('This mart has no cycle waiting for an audit.');
   if (c.audited_at) throw bad(`Cycle ${c.k} has already been audited.`);
   if (new Date(c.audit_at) > now()) throw bad(`The day-28 audit for cycle ${c.k} opens on ${new Date(c.audit_at).toDateString()}.`);
   const acc = await storeAccount(storeUserId);
   if (!(value >= 0) || value > acc.onShelf) throw bad(`The audited sales value must be between ₦0 and the ${N(acc.onShelf)} on the shelf.`);
   if (!(await db('store_cycles').where({ id: c.id }).whereNull('audited_at').update({ audited_value: Math.round(value), audited_at: now(), audited_by: actor.id }))) throw bad(`Cycle ${c.k} has already been audited.`);
   const store = await db('users').where({ id: storeUserId }).first();
-  await sendEmail({ to: store.email, name: 'Store Manager', category: 'audit', ref: 'cycle-' + c.k, subject: `Day-28 audit recorded for cycle ${c.k}`, paragraphs: [`Audited sales for cycle ${c.k}: ${N(value)}.`, `Remittance due: ${N(acc.remittanceDue + Math.round(value))}. Pay into the Tafiki Collections Account and report it in your store portal.`] });
+  await sendEmail({ to: store.email, name: 'Mart Manager', category: 'audit', ref: 'cycle-' + c.k, subject: `Day-28 audit recorded for cycle ${c.k}`, paragraphs: [`Audited sales for cycle ${c.k}: ${N(value)}.`, `Remittance due: ${N(acc.remittanceDue + Math.round(value))}. Pay into the Tafiki Collections Account and report it in your mart portal.`] });
   await activity.log(actor, 'store.audited', { type: 'user', id: storeUserId }, { cycle: c.k, value });
   return db('store_cycles').where({ id: c.id }).first();
 }
@@ -157,7 +157,7 @@ async function decideRemittance(id, ok, actor, note) {
   if (r.status !== 'pending') throw bad('This remittance has already been decided.');
   if (!(await db('remittances').where({ id, status: 'pending' }).update({ status: ok ? 'confirmed' : 'rejected', confirmed_by: actor.id, confirmed_at: now(), note: note || null }))) throw bad('This remittance has already been decided.');
   const store = await db('users').where({ id: r.store_user_id }).first();
-  await sendEmail({ to: store.email, name: 'Store Manager', category: 'remittance', ref: r.ref, subject: ok ? `Remittance ${r.ref} confirmed` : `Remittance ${r.ref} could not be confirmed`, paragraphs: [ok ? `We have confirmed your remittance of ${N(r.amount)} (${r.ref}).` : `We could not find your remittance of ${N(r.amount)} (${r.ref}) in the collections account${note ? ': ' + note : ''}. Reply with your proof of payment.`] });
+  await sendEmail({ to: store.email, name: 'Mart Manager', category: 'remittance', ref: r.ref, subject: ok ? `Remittance ${r.ref} confirmed` : `Remittance ${r.ref} could not be confirmed`, paragraphs: [ok ? `We have confirmed your remittance of ${N(r.amount)} (${r.ref}).` : `We could not find your remittance of ${N(r.amount)} (${r.ref}) in the collections account${note ? ': ' + note : ''}. Reply with your proof of payment.`] });
   await activity.log(actor, ok ? 'remittance.confirmed' : 'remittance.rejected', { type: 'remittance', id }, { ref: r.ref, amount: r.amount });
   return db('remittances').where({ id }).first();
 }
@@ -166,7 +166,7 @@ async function reconcile(storeUserId, actor) {
   if (!c || !c.audited_at) throw bad('Record the day-28 audit first.');
   if (c.reconciled_at) throw bad(`Cycle ${c.k} is already reconciled.`);
   const acc = await storeAccount(storeUserId);
-  if (acc.remittanceDue > 0) throw bad(`${N(acc.remittanceDue)} is still due. Confirm the store’s remittance before reconciling.`);
+  if (acc.remittanceDue > 0) throw bad(`${N(acc.remittanceDue)} is still due. Confirm the mart’s remittance before reconciling.`);
   if (!(await db('store_cycles').where({ id: c.id }).whereNull('reconciled_at').update({ reconciled_at: now(), reconciled_by: actor.id }))) throw bad(`Cycle ${c.k} is already reconciled.`);
   await activity.log(actor, 'store.reconciled', { type: 'user', id: storeUserId }, { cycle: c.k });
   await releaseRestocks(); // releases straight away if the restock date has passed
@@ -223,7 +223,7 @@ async function auditReminders() {
     const store = await db('users').where({ id: c.store_user_id }).first();
     const admins = await db('admins').where({ status: 'active' }).whereIn('role', ['Super Admin', 'Operations Manager', 'Auditor']);
     for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'audit', ref: 'cycle-' + c.k, subject: `Day-28 audit due: ${store.shop}`, paragraphs: [`Cycle ${c.k} at ${store.shop} has reached day 28. Record the audit in the Tafiki Console.`] });
-    await sendEmail({ to: store.email, name: 'Store Manager', category: 'audit', ref: 'cycle-' + c.k, subject: `Your day-28 audit is due (cycle ${c.k})`, paragraphs: ['Please submit your sales for this cycle and make the shop available for the stock count.'] });
+    await sendEmail({ to: store.email, name: 'Mart Manager', category: 'audit', ref: 'cycle-' + c.k, subject: `Your day-28 audit is due (cycle ${c.k})`, paragraphs: ['Please submit your sales for this cycle and make the shop available for the stock count.'] });
     await db('store_cycles').where({ id: c.id }).update({ reminder_sent: true });
   }
   return due.length;

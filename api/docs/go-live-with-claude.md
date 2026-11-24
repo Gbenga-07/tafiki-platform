@@ -28,7 +28,7 @@ You'll paste these keys into the server's settings file yourself in Phase 4. **D
 5. Start Smile ID's business KYC/contract process now. Production keys come after it.
 
 ### 3. Termii (SMS): nothing needed for test mode
-- In test mode, leave the Termii key empty. Delivery-code SMS then appear in **Console → Logistics → SMS log** marked "logged". Stores still see their code in their own portal.
+- In test mode, leave the Termii key empty. Delivery-code SMS then appear in **Console → Logistics → SMS log** marked "logged". Marts still see their code in their own portal.
 - **Start this now anyway:** sign up at termii.com and request the Sender ID **Tafiki** for the **DND (transactional)** route. Approval can take days, and live delivery codes need it.
 
 ### 4. Email: nothing needed for test mode
@@ -130,7 +130,7 @@ Open **https://tafiki.com**. A small **"Test mode"** label should show at the bo
 | # | Do this | You should see |
 |---|---|---|
 | 1 | Go to **tafiki.com/#console** and sign in with your Super Admin email and password | The console dashboard |
-| 2 | Use **Get started** to register a store account: "FOODCORE Test", with your second email and phone | Store portal shows "Your store is being reviewed" |
+| 2 | Use **Get started** to register a mart account: "FOODCORE Test", with your second email and phone | Mart portal shows "Your mart is being reviewed" |
 | 3 | In the console, open **Investment Packages → Add package**: name "FOODCORE Test", **2 units** | A funding package, 0 of 2 |
 | 4 | In a private browser window, register as a unit holder with your own email | The Smile ID screen opens |
 | 5 | Complete Smile ID with a **sandbox test ID number** and a selfie | Shortly after, Console → Investors shows **Verified**. If it shows "review", approve it in the console |
@@ -138,11 +138,11 @@ Open **https://tafiki.com**. A small **"Test mode"** label should show at the bo
 | 7 | Try a failed payment: start another purchase and use **4084 0800 0000 5408**, CVV **001** | Payment declined. The unit stays reserved for 48 hours |
 | 8 | Buy the 2nd unit by **bank transfer** and tap "I've made the transfer" | No membership fee this time (₦2,000,000 only). Console → Units and Payments shows it waiting. Click **Funds Received** |
 | 9 | Package is now full. Click **Open package** | One delivery per stake appears in **Deliveries** |
-| 10 | Move a delivery to **In Transit** (or wait 6 hours per stage) | Console → SMS log shows the code message as "logged". The store portal shows the 6-digit code |
-| 11 | Click **Complete** and enter the code | Delivered. Store shelf value goes up |
+| 10 | Move a delivery to **In Transit** (or wait 6 hours per stage) | Console → SMS log shows the code message as "logged". The mart portal shows the 6-digit code |
+| 11 | Click **Complete** and enter the code | Delivered. Mart shelf value goes up |
 | 12 | Ask Claude: `Run npm run sim:advance -- 28 in api/` | The platform jumps 28 days ahead |
-| 13 | Store portal: **Submit Sales** (for example ₦1,000,000). Console → Audit: record the audit | Remittance Due appears in the store portal |
-| 14 | Store portal: **Remit**. Console → Remittance: **Confirm**. Console → Audit: **Reconcile** | The cycle closes, and a restock replaces exactly what sold |
+| 13 | Mart portal: **Submit Sales** (for example ₦1,000,000). Console → Audit: record the audit | Remittance Due appears in the mart portal |
+| 14 | Mart portal: **Remit**. Console → Remittance: **Confirm**. Console → Audit: **Reconcile** | The cycle closes, and a restock replaces exactly what sold |
 | 15 | Ask Claude: `Run npm run sim:advance -- 65 in api/` | 90+ days have passed |
 | 16 | Console → **Payouts** → the package → **Run payout** with a profit figure | Unit holders' wallets are credited |
 | 17 | As the unit holder: **Wallet → Withdraw** ₦50,000 | Request shows "processing" |
@@ -150,7 +150,7 @@ Open **https://tafiki.com**. A small **"Test mode"** label should show at the bo
 | 19 | Console → **Admin access**: add a **Logistics Officer**. Sign in as them | Payment and payout buttons are greyed out with "Ask a Super Admin" |
 | 20 | Repeat steps 4–6 on your **phone** | Everything fits the screen and works |
 
-If anything looks wrong, describe it to Claude in plain words. For example: `On the store portal the remittance button does nothing after I tap it. Investigate using pm2 logs and fix it, then run the tests.`
+If anything looks wrong, describe it to Claude in plain words. For example: `On the mart portal the remittance button does nothing after I tap it. Investigate using pm2 logs and fix it, then run the tests.`
 
 ---
 
@@ -185,7 +185,7 @@ Paystack is LIVE, Smile ID is production, SMS is live, email is live and SIMULAT
 The "Test mode" label disappears once every service is live.
 
 ### 4. Final checks
-- Send one SMS to your own phone: create a small store order to your test store and move it to In Transit, then cancel or complete it.
+- Send one SMS to your own phone: create a small mart order to your test mart and move it to In Transit, then cancel or complete it.
 - Register yourself as the first real member with your real NIN.
 - Have counsel confirm the Terms and Conditions (currently marked "proposed").
 - Add your team in **Console → Admin access** with the right roles. Only you should be Super Admin.

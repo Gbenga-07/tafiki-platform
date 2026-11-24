@@ -40,7 +40,7 @@ async function nextCoopNo(db) {
 r.post('/register', async (req, res) => {
   const d = Register.parse(req.body);
   if (!pw.strongEnough(d.password)) throw bad('Use at least 8 characters with letters and a number.');
-  if (d.role === 'retailer' && !(d.shop && /^FOODCORE\s+\S/i.test(d.shop))) throw bad('Store names start with FOODCORE.');
+  if (d.role === 'retailer' && !(d.shop && /^FOODCORE\s+\S/i.test(d.shop))) throw bad('Mart names start with FOODCORE.');
   const db = getDb();
   const email = lower(d.email);
   if (await db('users').where({ email }).first()) throw new HttpError(409, 'An account already exists for this email. Try signing in.');

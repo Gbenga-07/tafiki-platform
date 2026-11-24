@@ -58,7 +58,7 @@ async function settle(holdingId, actor) {
     if (!(await db('packages').where({ id: p.id, stage: 'funding' }).update({ stage: 'full' }))) return db('holdings').where({ id: h.id }).first();
     await activity.log({ type: 'system' }, 'package.full', { type: 'package', id: p.id }, { units: confirmed });
     const admins = await db('admins').where({ status: 'active' }).whereIn('role', ['Super Admin', 'Operations Manager']);
-    for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: p.id, subject: `${p.name} is fully subscribed`, paragraphs: [`All ${p.units_total} units in ${p.name} are confirmed (${fmtN(p.units_total * terms.unitPrice)}).`, 'Open the package in the Tafiki Console to assign the store and start trading.'] });
+    for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: p.id, subject: `${p.name} is fully subscribed`, paragraphs: [`All ${p.units_total} units in ${p.name} are confirmed (${fmtN(p.units_total * terms.unitPrice)}).`, 'Open the package in the Tafiki Console to assign the mart and start trading.'] });
   }
   return db('holdings').where({ id: h.id }).first();
 }
@@ -91,7 +91,7 @@ async function markPaymentSuccess(payment, { channel, raw, by, mustWin } = {}) {
   await db('holdings').where({ id: payment.holding_id }).update({ payment_verified: true, paid_at: now(), reserved_until: null });
   h = await db('holdings').where({ id: payment.holding_id }).first();
   const u = await db('users').where({ id: h.user_id }).first();
-  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Payment received for ${h.ref}`, paragraphs: [Number(payment.fee_amount) ? `We have received ${fmtN(payment.amount)}: ${fmtN(stakePart)} for ${h.units} unit${h.units > 1 ? 's' : ''} (${h.ref}) and ${fmtN(payment.fee_amount)} for your yearly cooperative membership. The unit money is held in the escrow account until the store opens. The membership fee is non-refundable and earns no returns; returns are paid on your units only.` : `We have received ${fmtN(payment.amount)} for ${h.units} unit${h.units > 1 ? 's' : ''} (${h.ref}). The money is held in the escrow account until the store opens.`, u.kyc_status === 'verified' ? 'Your units are now confirmed.' : 'Your units will be confirmed as soon as your identity check is complete.'] });
+  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Payment received for ${h.ref}`, paragraphs: [Number(payment.fee_amount) ? `We have received ${fmtN(payment.amount)}: ${fmtN(stakePart)} for ${h.units} unit${h.units > 1 ? 's' : ''} (${h.ref}) and ${fmtN(payment.fee_amount)} for your yearly cooperative membership. The unit money is held in the escrow account until the mart opens. The membership fee is non-refundable and earns no returns; returns are paid on your units only.` : `We have received ${fmtN(payment.amount)} for ${h.units} unit${h.units > 1 ? 's' : ''} (${h.ref}). The money is held in the escrow account until the mart opens.`, u.kyc_status === 'verified' ? 'Your units are now confirmed.' : 'Your units will be confirmed as soon as your identity check is complete.'] });
   return settle(h.id, by ? { type: 'admin', id: by } : { type: 'system' });
 }
 
@@ -125,16 +125,16 @@ async function openPackage(packageId, storeUserId, actor) {
   if (confirmed < p.units_total) throw bad(`Only ${confirmed} of ${p.units_total} units are confirmed. A package opens when every unit is confirmed.`);
   let storeId = storeUserId || p.store_user_id;
   if (!storeId) { const s = await db('users').where({ role: 'retailer', shop: p.name }).first(); storeId = s && s.id; }
-  if (!storeId) throw bad('Choose the FOODCORE store for this package. The store must have an account.');
+  if (!storeId) throw bad('Choose the FOODCORE Mart for this package. The mart must have an account.');
   const store = await db('users').where({ id: storeId, role: 'retailer' }).first();
-  if (!store) throw bad('That FOODCORE store account was not found.');
+  if (!store) throw bad('That FOODCORE Mart account was not found.');
   const won = await db('packages').where({ id: p.id }).whereIn('stage', ['funding', 'full']).update({ stage: 'trading', store_user_id: storeId, opened_at: now() });
   if (!won) throw new HttpError(409, 'This package has just been opened.');
   const hs = await db('holdings').where({ package_id: p.id, status: 'reserved' });
   for (const h of hs) {
     await db('holdings').where({ id: h.id }).update({ status: 'active', active_since: now() });
     const u = await db('users').where({ id: h.user_id }).first();
-    await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `${p.name} is open and trading`, paragraphs: [`${p.name} is now open. Your ${h.units} unit${h.units > 1 ? 's' : ''} (${h.ref}) are earning from today.`, 'Stock is on its way to the store. You will see each delivery on your dashboard.'] });
+    await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `${p.name} is open and trading`, paragraphs: [`${p.name} is now open. Your ${h.units} unit${h.units > 1 ? 's' : ''} (${h.ref}) are earning from today.`, 'Stock is on its way to the mart. You will see each delivery on your dashboard.'] });
   }
   await activity.log(actor, 'package.opened', { type: 'package', id: p.id }, { store: store.shop, holdings: hs.length });
   return db('packages').where({ id: p.id }).first();

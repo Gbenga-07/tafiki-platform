@@ -86,7 +86,7 @@ All write requests: JSON body, header `X-Tafiki-Client: 1`, cookies included (`c
 | POST | /api/admin/admins/:id/status | settings | `active` or `disabled` |
 | GET / PUT | /api/admin/admins/security | settings to change | Two-step verification, timeout, lockout |
 | GET | /api/admin/admins/login-events | any admin | Console sign-in history |
-| GET | /api/admin/users?role=&kyc=&q= | any admin | Members and stores |
+| GET | /api/admin/users?role=&kyc=&q= | any admin | Members and marts |
 | GET | /api/admin/users/:id | any admin | Member with activity |
 | PATCH | /api/admin/users/:id | members | Edit details; member is emailed what changed |
 | POST | /api/admin/users/:id/reset-link | members | Email a reset link |
@@ -125,7 +125,7 @@ Rules: units are confirmed only when the payment is verified **and** the member'
 |---|---|---|---|
 | GET | /api/admin/packages | any admin | Packages with funding status |
 | POST / PATCH | /api/admin/packages(/:id) | packages | Create or edit a package |
-| POST | /api/admin/packages/:id/open | packages | Open a full package: links the FOODCORE store, units start earning, holders emailed |
+| POST | /api/admin/packages/:id/open | packages | Open a full package: links the FOODCORE Mart, units start earning, holders emailed |
 | GET | /api/admin/holdings?status=&packageId= | any admin | All unit holdings |
 | GET | /api/admin/payments?status= | any admin | All payments |
 | POST | /api/admin/payments/:id/confirm | payments | Confirm a bank transfer found in escrow |
@@ -136,35 +136,35 @@ Rules: units are confirmed only when the payment is verified **and** the member'
 ## API (Stage 3)
 
 **How a delivery works**
-1. A package opens, so each holding's stock (the unit package × units) becomes a delivery to its FOODCORE store, coded `SO-1040`. Admins can also raise store orders (`TR-2001`).
+1. A package opens, so each holding's stock (the unit package × units) becomes a delivery to its FOODCORE Mart, coded `SO-1040`. Admins can also raise mart orders (`TR-2001`).
 2. Every delivery gets a random 6-digit **delivery code**. It is stored encrypted and its hash is checked; the SMS log shows it masked.
 3. Stages move **automatically** every 6 hours: Order Received, Picked Up, In Transit. Logistics can move, delay, pause or set the driver.
-4. At **In Transit** the store manager gets the code by **Termii SMS** (DND route) and email, and can see it in the store portal.
-5. On arrival the driver opens their **delivery link** (no account needed) and enters the code the store gives them. Five wrong codes lock the delivery and alert operations, who can reissue the code. Logistics can complete with an **override** and a written reason (recorded).
-6. Delivered stock is added to the store's consignment account. The first delivery starts **cycle 1**.
+4. At **In Transit** the mart manager gets the code by **Termii SMS** (DND route) and email, and can see it in the mart portal.
+5. On arrival the driver opens their **delivery link** (no account needed) and enters the code the mart gives them. Five wrong codes lock the delivery and alert operations, who can reissue the code. Logistics can complete with an **override** and a written reason (recorded).
+6. Delivered stock is added to the mart's consignment account. The first delivery starts **cycle 1**.
 
-**Each cycle (30 days):** the store reports sales; on **day 28** the audit is due (store and auditors are emailed); an Auditor records audited sales; the store pays and reports the **remittance**; it is confirmed; the account is **reconciled**; on day 30, after reconciliation, the **restock** deliveries (`SO-1040-R1`) are created automatically, and their delivery starts the next cycle.
+**Each cycle (30 days):** the mart reports sales; on **day 28** the audit is due (mart and auditors are emailed); an Auditor records audited sales; the mart pays and reports the **remittance**; it is confirmed; the account is **reconciled**; on day 30, after reconciliation, the **restock** deliveries (`SO-1040-R1`) are created automatically, and their delivery starts the next cycle.
 
 | Method | Path | Who | Purpose |
 |---|---|---|---|
-| GET | /api/store/account | store | Stock received, audited sales, remittances, due, on shelf, current cycle |
-| GET | /api/store/deliveries(/:id) | store | Deliveries; the detail shows the delivery code until delivered |
-| POST / GET | /api/store/sales | store | Report sales for the current cycle |
-| POST / GET | /api/store/remittances | store | Report a remittance (RM-0001) |
-| GET | /api/store/cycles | store | Cycle dates and status |
-| GET | /api/driver/:token | driver link | Delivery to complete: store, address, bags |
-| POST | /api/driver/:token/complete | driver link | Complete with the store's code |
+| GET | /api/store/account | mart | Stock received, audited sales, remittances, due, on shelf, current cycle |
+| GET | /api/store/deliveries(/:id) | mart | Deliveries; the detail shows the delivery code until delivered |
+| POST / GET | /api/store/sales | mart | Report sales for the current cycle |
+| POST / GET | /api/store/remittances | mart | Report a remittance (RM-0001) |
+| GET | /api/store/cycles | mart | Cycle dates and status |
+| GET | /api/driver/:token | driver link | Delivery to complete: mart, address, bags |
+| POST | /api/driver/:token/complete | driver link | Complete with the mart's code |
 | GET | /api/holdings/:id/deliveries | unit holder | Deliveries for my stake |
 | GET | /api/admin/deliveries?open=1&storeId=&kind= | any admin | All deliveries |
 | GET | /api/admin/deliveries/:id | any admin | Lines, stage history, driver link |
-| POST | /api/admin/deliveries | logistics | Raise a store order |
+| POST | /api/admin/deliveries | logistics | Raise a mart order |
 | POST | /api/admin/deliveries/:id/advance | logistics | Move to the next stage |
 | PATCH | /api/admin/deliveries/:id | logistics | Driver, vehicle, automatic stages on/off |
 | POST | /api/admin/deliveries/:id/delay | logistics | Delay the next automatic stage |
-| POST | /api/admin/deliveries/:id/complete | logistics | Complete with the store's code |
+| POST | /api/admin/deliveries/:id/complete | logistics | Complete with the mart's code |
 | POST | /api/admin/deliveries/:id/override | logistics | Complete without the code, with a reason |
 | POST | /api/admin/deliveries/:id/reissue-code | logistics | New code by SMS |
-| GET | /api/admin/stores, /api/admin/stores/:id | any admin | Stores with accounts, cycles, remittances, sales |
+| GET | /api/admin/stores, /api/admin/stores/:id | any admin | Marts with accounts, cycles, remittances, sales |
 | POST | /api/admin/stores/:id/audit | audit | Record day-28 audited sales |
 | POST | /api/admin/stores/:id/reconcile | audit | Reconcile once remittance covers audited sales |
 | GET | /api/admin/remittances?status= | any admin | Remittances |
