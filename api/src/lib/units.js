@@ -113,7 +113,7 @@ async function expireReservations() {
     if (!won) continue; n++;
     await db('payments').where({ holding_id: h.id, status: 'initialized' }).update({ status: 'failed' });
     const u = await db('users').where({ id: h.user_id }).first();
-    if (u) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Your reservation ${h.ref} has expired`, paragraphs: ['We did not receive payment within the reservation period, so the units have been released.', 'You can reserve again from your dashboard if units are still open.'] });
+    if (u) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Your checkout for ${h.ref} was not completed`, paragraphs: ['The payment for these units was not completed in time, so the units have been released. No money was taken.', 'You can buy again from your dashboard while units are still open.'] });
   }
   return n;
 }

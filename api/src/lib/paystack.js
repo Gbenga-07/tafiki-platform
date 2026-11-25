@@ -4,10 +4,10 @@ let fetchImpl = (...a) => fetch(...a);
 const setFetch = (f) => { fetchImpl = f; };
 const secret = () => process.env.PAYSTACK_SECRET_KEY || '';
 async function call(path, opts = {}) {
-  if (!secret()) throw Object.assign(new Error('Paystack is not configured. Add PAYSTACK_SECRET_KEY to .env.'), { status: 503 });
+  if (!secret()) throw Object.assign(new Error('Online payment is not switched on yet. Please try again later.'), { status: 503, expose: true }); // admins: add PAYSTACK_SECRET_KEY to .env
   const res = await fetchImpl('https://api.paystack.co' + path, { ...opts, headers: { Authorization: 'Bearer ' + secret(), 'Content-Type': 'application/json', ...(opts.headers || {}) } });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok || body.status === false) throw Object.assign(new Error(body.message || 'Paystack request failed.'), { status: 502 });
+  if (!res.ok || body.status === false) throw Object.assign(new Error('Paystack could not start the payment' + (body.message ? ': ' + body.message : '') + '. Please try again.'), { status: 502, expose: true });
   return body.data;
 }
 const initialize = ({ email, amountNaira, reference, callbackUrl, channels, metadata }) =>

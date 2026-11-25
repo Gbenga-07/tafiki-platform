@@ -57,8 +57,8 @@ function createApp() {
     if (err instanceof ZodError) return res.status(400).json({ error: err.issues[0] ? err.issues[0].message : 'Invalid request.', fields: err.issues.map((i) => i.path.join('.')) });
     if (err && (err.code === 'ER_DUP_ENTRY' || /UNIQUE constraint failed/.test(err.message || ''))) return res.status(409).json({ error: 'This has already been done.' });
     const status = err.status || 500;
-    if (status >= 500) console.error(err);
-    res.status(status).json({ error: status >= 500 ? 'Something went wrong. Please try again.' : err.message, ...(err.extra || {}) });
+    if (status >= 500 && !err.expose) console.error(err);
+    res.status(status).json({ error: status >= 500 && !err.expose ? 'Something went wrong. Please try again.' : err.message, ...(err.extra || {}) });
   });
   return app;
 }

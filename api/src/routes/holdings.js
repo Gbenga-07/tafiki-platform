@@ -31,7 +31,11 @@ r.get('/:id', async (req, res) => {
   res.json({ holding: out, payments: await db('payments').where({ holding_id: h.id }).select('reference', 'provider', 'amount', 'fee_amount', 'status', 'channel', 'created_at', 'verified_at') });
 });
 
-const Reserve = z.object({ packageId: z.string().min(1), units: z.number().int().min(1).max(40), signedName: z.string().trim().min(3).max(120), agree: z.literal(true, { errorMap: () => ({ message: 'Read and accept the key terms and the Unit Subscription and Security Agreement.' }) }) });
+// Direct purchase is the default: buying creates the stake and opens Paystack checkout in one step; units are held
+// only for the checkout (terms.checkoutMinutes) and released automatically if it is not completed.
+// Manual bank transfers to escrow (confirmed by Finance) are off unless MANUAL_TRANSFERS=on.
+const manualTransfers = () => ['1', 'true', 'on'].includes(String(process.env.MANUAL_TRANSFERS || 'off').toLowerCase());
+const Reserve = z.object({ packageId: z.string().min(1), units: z.number().int().min(1).max(40), signedName: z.string().trim().min(3).max(120), method: z.enum(['card', 'debit', 'any']).optional(), agree: z.literal(true, { errorMap: () => ({ message: 'Read and accept the key terms and the Unit Subscription and Security Agreement.' }) }) });
 r.post('/', async (req, res) => {
   const d = Reserve.parse(req.body); const u = req.user;
   if (u.role !== 'investor') throw new HttpError(403, 'Only unit holder accounts can buy units.');
@@ -45,11 +49,17 @@ r.post('/', async (req, res) => {
     const open = p.units_total - (await units.unitsTaken(p.id, trx));
     if (d.units > open) throw bad(open ? `Only ${open} unit${open > 1 ? 's are' : ' is'} still open in ${p.name}.` : `${p.name} has no units left.`);
     ref = 'FC-' + (await counters.next('holding', 1001, trx));
-    await trx('holdings').insert({ id, ref, user_id: u.id, package_id: p.id, units: d.units, amount: d.units * terms.unitPrice, status: 'unpaid', reserved_until: addMinutes(now(), terms.reservationHours * 60), signed_name: d.signedName, signed_at: now(), agreement_version: config.termsVersion });
+    await trx('holdings').insert({ id, ref, user_id: u.id, package_id: p.id, units: d.units, amount: d.units * terms.unitPrice, status: 'unpaid', reserved_until: addMinutes(now(), manualTransfers() ? terms.reservationHours * 60 : (terms.checkoutMinutes || 30)), signed_name: d.signedName, signed_at: now(), agreement_version: config.termsVersion });
   }));
-  await activity.log({ type: 'user', id: u.id }, 'units.reserved', { type: 'holding', id }, { ref, units: d.units });
-  const h = await db('holdings').where({ id }).first();
-  res.status(201).json({ holding: shapeH(h, await db('packages').where({ id: h.package_id }).first()) });
+  await activity.log({ type: 'user', id: u.id }, manualTransfers() ? 'units.reserved' : 'units.checkout_started', { type: 'holding', id }, { ref, units: d.units });
+  let h = await db('holdings').where({ id }).first();
+  let checkout = null;
+  if (!manualTransfers()) { // direct purchase: open the checkout now; if Paystack is unreachable the units are released
+    try { checkout = await startCheckout(req.user, h, d.method || 'any'); }
+    catch (e) { await db('holdings').where({ id, status: 'unpaid' }).update({ status: 'cancelled', cancel_reason: 'Checkout could not start' }); throw e; }
+    h = await db('holdings').where({ id }).first();
+  }
+  res.status(201).json({ holding: shapeH(h, await db('packages').where({ id: h.package_id }).first()), checkout });
 });
 
 r.get('/:id/deliveries', async (req, res) => {
@@ -59,35 +69,40 @@ r.get('/:id/deliveries', async (req, res) => {
   res.json({ deliveries: out });
 });
 
-r.post('/:id/pay', async (req, res) => {
-  const method = req.body && req.body.method; if (!['card', 'debit', 'transfer'].includes(method)) throw bad('Choose card, bank debit or bank transfer.');
-  const db = getDb(); const h = await db('holdings').where({ id: req.params.id, user_id: req.user.id }).first();
-  if (!h) throw new HttpError(404, 'Not found.');
-  if (h.status !== 'unpaid' || h.payment_verified) throw bad('This reservation is not waiting for payment.');
-  if (h.reserved_until && new Date(h.reserved_until) < now()) throw bad('This reservation has expired. Reserve again.');
+async function startCheckout(user, h, method) {
+  const db = getDb();
+  if (method === 'transfer' && !manualTransfers()) throw bad('Pay by card, bank or Paystack transfer at checkout. Manual transfers are not used.');
+  if (h.status !== 'unpaid' || h.payment_verified) throw bad('This purchase is not waiting for payment.');
+  if (h.reserved_until && new Date(h.reserved_until) < now()) throw bad('This checkout has timed out. Buy again.');
   const reference = `${h.ref}-${Date.now().toString(36).toUpperCase()}`;
-  await db('holdings').where({ id: h.id }).update({ method });
+  await db('holdings').where({ id: h.id }).update({ method: method === 'any' ? 'card' : method });
   // The yearly membership fee rides on the member's first stake payment. Locking the member's row makes two
   // simultaneous checkouts decide one at a time, so only one of them can carry the fee.
   const payId = uuid(); let fee = 0; const terms = await getTerms();
   await db.transaction(async (trx) => {
-    const u = await trx('users').where({ id: req.user.id }).forUpdate().first();
+    const u = await trx('users').where({ id: user.id }).forUpdate().first();
     fee = await membership.feeForPayment(u, h.id, trx, terms);
     await trx('payments').insert({ id: payId, holding_id: h.id, user_id: h.user_id, provider: method === 'transfer' ? 'transfer' : 'paystack', reference, amount: Number(h.amount) + fee, fee_amount: fee, status: 'initialized' });
   });
   const total = Number(h.amount) + fee;
   const breakdown = { units: Number(h.amount), membershipFee: fee, total };
-  if (method === 'transfer') {
-    return res.json({ method, reference, amount: total, breakdown, escrow: await getSetting('escrow'), note: 'Use the reference as the transfer narration, then tap "I have sent the transfer".' });
-  }
+  if (method === 'transfer') return { method, reference, amount: total, breakdown, escrow: await getSetting('escrow'), note: 'Use the reference as the transfer narration, then tap "I have sent the transfer".' };
+  const channels = method === 'card' ? ['card'] : method === 'debit' ? ['bank', 'bank_transfer'] : ['card', 'bank', 'bank_transfer', 'ussd'];
   let init;
-  try { init = await paystack.initialize({ email: req.user.email, amountNaira: total, reference, callbackUrl: `${config.appUrl}/#pay-result?ref=${encodeURIComponent(reference)}`, channels: method === 'card' ? ['card'] : ['bank', 'bank_transfer'], metadata: { holding: h.ref, units: h.units, user: req.user.id, membership_fee: fee } }); }
+  try { init = await paystack.initialize({ email: user.email, amountNaira: total, reference, callbackUrl: `${config.appUrl}/#pay-result?ref=${encodeURIComponent(reference)}`, channels, metadata: { holding: h.ref, units: h.units, user: user.id, membership_fee: fee } }); }
   catch (e) { await db('payments').where({ id: payId }).update({ status: 'failed' }); throw e; }
-  res.json({ method, reference, amount: total, breakdown, authorizationUrl: init.authorization_url, accessCode: init.access_code });
+  return { method, reference, amount: total, breakdown, authorizationUrl: init.authorization_url, accessCode: init.access_code };
+}
+r.post('/:id/pay', async (req, res) => {
+  const method = req.body && req.body.method; if (!['card', 'debit', 'transfer', 'any'].includes(method)) throw bad('Choose how to pay.');
+  const db = getDb(); const h = await db('holdings').where({ id: req.params.id, user_id: req.user.id }).first();
+  if (!h) throw new HttpError(404, 'Not found.');
+  res.json(await startCheckout(req.user, h, method));
 });
 
 r.post('/:id/transfer-sent', async (req, res) => {
   const db = getDb(); const h = await db('holdings').where({ id: req.params.id, user_id: req.user.id }).first(); if (!h) throw new HttpError(404, 'Not found.');
+  if (!manualTransfers()) throw bad('Manual transfers are not used. Pay at checkout.');
   const p = await db('payments').where({ holding_id: h.id, provider: 'transfer', status: 'initialized' }).orderBy('created_at', 'desc').first();
   if (!p) throw bad('Start a bank transfer first.');
   await db('payments').where({ id: p.id }).update({ status: 'pending_review' });
