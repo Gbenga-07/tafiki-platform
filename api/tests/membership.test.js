@@ -57,7 +57,7 @@ test('first stake: Paystack is charged units + ₦50,000; capital stays units on
   const months = (new Date(u.membershipUntil) - Date.now()) / (30.44 * 864e5); assert.ok(months > 11.8 && months < 12.2, String(months));
   const rows = await db('memberships').where({ user_id: m.id }); assert.equal(rows.length, 1); assert.equal(Number(rows[0].amount), FEE);
   const hold = await db('holdings').where({ id: h.id }).first(); assert.equal(Number(hold.amount), 2 * UNIT); assert.equal(hold.status, 'reserved');
-  const mails = await db('emails').where({ to_email: 'first@example.com' }).where('subject', 'like', 'Payment received%'); assert.equal(mails.length, 1); assert.match(mails[0].body_text, /₦4,050,000: ₦4,000,000 for 2 units/); assert.match(mails[0].body_text, /₦50,000 for your yearly cooperative membership/); assert.match(mails[0].body_text, /non-refundable and earns no returns/);
+  const mails = await db('emails').where({ to_email: 'first@example.com' }).where('subject', 'like', '%ayment received%'); assert.equal(mails.length, 1); assert.match(mails[0].body_text, /₦4,050,000: ₦4,000,000 for your units/); assert.match(mails[0].body_text, /Units: 2 × ₦2,000,000/); assert.match(mails[0].body_text, /Total paid: ₦4,050,000/); assert.match(mails[0].body_text, /₦50,000 for your yearly cooperative membership/); assert.match(mails[0].body_text, /non-refundable and earns no returns/);
 });
 
 test('second stake in the same year: no fee', async () => {

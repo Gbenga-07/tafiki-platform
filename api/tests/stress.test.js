@@ -49,7 +49,7 @@ test('the same Paystack payment reported 10 times at once is applied once', asyn
   await new Promise((r) => setTimeout(r, 800));
   const h = await db('holdings').where({ id: w.h.id }).first(); assert.equal(h.status, 'reserved'); assert.match(h.cert_no, /^FC-C-/);
   const certs = await db('holdings').whereNotNull('cert_no'); assert.equal(certs.length, 1, 'one certificate');
-  const mails = await db('emails').where({ ref: h.ref }).where('subject', 'like', 'Payment received%'); assert.equal(mails.length, 1, 'one payment email');
+  const mails = await db('emails').where({ ref: h.ref }).where('subject', 'like', '%ayment received%'); assert.equal(mails.length, 1, 'one payment email');
 });
 
 test('a payment that lands after the reservation expired is not lost', async () => {
@@ -69,7 +69,7 @@ test('confirming the same bank transfer twice at once applies it once', async ()
   const pay = await db('payments').where({ holding_id: w.h.id }).first();
   const rs = await Promise.all([...Array(5)].map(() => fin.post('/api/admin/payments/' + pay.id + '/confirm')));
   assert.equal(rs.filter((r) => r.status >= 500).length, 0);
-  assert.equal((await db('emails').where({ ref: w.h.ref }).where('subject', 'like', 'Payment received%')).length, 1);
+  assert.equal((await db('emails').where({ ref: w.h.ref }).where('subject', 'like', '%ayment received%')).length, 1);
 });
 
 test('fill the package; opening it twice at once creates one set of deliveries', async () => {

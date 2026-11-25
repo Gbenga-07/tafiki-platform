@@ -212,3 +212,24 @@ test('10. every page the console and members use answers for all 20 marts, and t
   await all([units.expireReservations(), units.expireReservations()]);
   const left = Number((await db('holdings').where({ status: 'unpaid' }).count({ n: '*' }).first()).n); assert.equal(left, 0);
 });
+
+test('11. every money movement sent an email receipt with a unique number and the right amount', async () => {
+  const pays = await db('payments').where({ status: 'success' });
+  const rc = await db('emails').where({ category: 'receipts', direction: 'in' }).whereNotNull('receipt_no');
+  const payRc = rc.filter((e) => /payment received/i.test(e.subject));
+  assert.equal(payRc.length, pays.length, 'one payment receipt per successful payment');
+  assert.equal(payRc.reduce((a, e) => a + Number(e.amount), 0), pays.reduce((a, p) => a + Number(p.amount), 0), 'receipt amounts add up');
+  const payoutTx = await db('wallet_tx').where({ type: 'payout' });
+  const payoutRc = await db('emails').where({ category: 'payouts', direction: 'out' }).where('subject', 'like', 'Payout %');
+  assert.equal(payoutRc.length, payoutTx.length, 'one payout advice per payout');
+  const red = await db('redemptions').where({ status: 'settled' });
+  assert.equal((await db('emails').where({ category: 'payouts' }).where('subject', 'like', 'Redemption%').count({ n: '*' }).first()).n, red.length);
+  const delivered = await db('deliveries').where({ status: 3 });
+  assert.equal(Number((await db('emails').where({ category: 'delivery', direction: 'goods' }).count({ n: '*' }).first()).n), delivered.length, 'goods-received note per delivery');
+  const nos = (await db('emails').whereNotNull('receipt_no').select('receipt_no')).map((x) => x.receipt_no);
+  assert.equal(new Set(nos).size, nos.length, 'receipt numbers are unique'); nos.forEach((n) => assert.match(n, /^TFK-\d{4}-\d{6}$/));
+  const one = payRc[0]; assert.match(one.body_html, /Payment receipt/); assert.match(one.body_text, /Total paid: ₦/); assert.match(one.subject, / · TFK-/);
+  const list = (await sup.get('/api/admin/emails?receipts=1&limit=1000')).body;
+  assert.ok(list.emails.length >= payRc.length && list.summary.find((x) => x.category === 'receipts').count >= payRc.length);
+  assert.ok((await sup.get('/api/admin/emails?q=' + encodeURIComponent(one.receipt_no))).body.emails.some((e) => e.id === one.id), 'search by receipt number');
+});
