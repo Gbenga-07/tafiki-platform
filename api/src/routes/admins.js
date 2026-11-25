@@ -8,6 +8,7 @@ const { requireAdmin, requirePerm, revokeAll } = require('../lib/auth');
 const { getSetting, putSetting } = require('../lib/settings');
 const { ROLES, GROUPS } = require('../lib/permissions');
 const { sendEmail } = require('../lib/mailer');
+const K = require('../lib/emailkit');
 const activity = require('../lib/activity');
 const present = require('../lib/present');
 const config = require('../config');
@@ -25,7 +26,11 @@ r.post('/', requirePerm('settings'), async (req, res) => {
   const temp = tempPassword(); const id = uuid();
   await db('admins').insert({ id, name: d.name, email, role: d.role, password_hash: await pw.hash(temp), must_change: true });
   await activity.log(me(req), 'admin.created', { type: 'admin', id }, { role: d.role });
-  await sendEmail({ to: email, name: d.name.split(' ')[0], category: 'security', subject: 'You have been added to the Tafiki Console', paragraphs: [`You now have ${d.role} access to the Tafiki Console.`, `Sign in at ${config.appUrl}${config.consolePath} with the temporary password shared with you privately, then choose your own password.`] });
+  await sendEmail({ to: email, name: d.name.split(' ')[0], category: 'security', subject: 'You have been added to the Tafiki Console', title: 'Welcome to the Tafiki Console',
+    lead: `You now have **${d.role}** access to the Tafiki Console.`,
+    blocks: [{ type: 'kv', title: 'Your access', rows: [['Name', d.name], ['Sign-in email', email], ['Role', d.role], ['Added', K.when()]] }],
+    next: ['Sign in with the temporary password shared with you privately.', 'Choose your own password when asked.', 'Never share your password or sign-in codes with anyone.'],
+    cta: { label: 'Open the Tafiki Console', url: `${config.appUrl}${config.consolePath}` }, help: 'Questions about your access? Ask a Super Admin.' });
   res.status(201).json({ admin: present.admin(await db('admins').where({ id }).first()), temporaryPassword: temp });
 });
 r.patch('/:id', requirePerm('settings'), async (req, res) => {

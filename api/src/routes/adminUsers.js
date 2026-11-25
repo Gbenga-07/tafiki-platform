@@ -7,6 +7,7 @@ const pw = require('../lib/passwords');
 const { requireAdmin, requirePerm, revokeAll } = require('../lib/auth');
 const codes = require('../lib/codes');
 const { sendEmail } = require('../lib/mailer');
+const K = require('../lib/emailkit');
 const activity = require('../lib/activity');
 const present = require('../lib/present');
 const config = require('../config');
@@ -46,17 +47,27 @@ r.patch('/:id', requirePerm('members'), async (req, res) => {
   await activity.log(me(req), 'member.edited_by_admin', { type: 'user', id: u.id }, { fields: changed });
   if (changed.includes('kyc_status') && upd.kyc_status === 'verified') await require('../lib/units').onKycVerified(u.id, me(req));
   if (upd.email && require('../lib/marts').isPlaceholderEmail(u.email) && !require('../lib/marts').isPlaceholderEmail(upd.email)) {
-    await sendEmail({ to: upd.email, name: (upd.name || u.name).split(' ')[0], category: 'account', subject: `You now manage ${upd.shop || u.shop} on Tafiki`, ref: u.id, paragraphs: [`Tafiki has set you up as the manager of ${upd.shop || u.shop}.`, `To sign in, go to ${config.appUrl}/#login, choose "Forgot your password?" and enter this email to set your password.`, 'Your mart portal shows incoming deliveries, delivery codes, sales and remittances.'] });
+    await sendEmail({ to: upd.email, name: (upd.name || u.name).split(' ')[0], category: 'account', subject: `You now manage ${upd.shop || u.shop} on Tafiki`, ref: u.id, title: `You now manage ${upd.shop || u.shop}`,
+      lead: `Tafiki has set you up as the manager of **${upd.shop || u.shop}**. Welcome aboard.`,
+      blocks: [{ type: 'kv', title: 'Your mart', rows: [['Mart', upd.shop || u.shop], ['Manager', upd.name || u.name], ['Sign-in email', upd.email], ['Phone', upd.phone || u.phone || '']] }],
+      next: ['Go to the Tafiki sign-in page and choose **Forgot your password?**', 'Enter this email address to set your own password.', 'Your mart portal shows incoming deliveries, delivery codes, sales and remittances.'],
+      cta: { label: 'Set my password', url: K.link('login') } });
     return res.json({ user: present.userFull(await db('users').where({ id: u.id }).first()), changed });
   }
   const fields = changed.map((k) => LABELS[k]).join(', ');
-  for (const to of [...new Set([u.email, upd.email || u.email])]) await sendEmail({ to, name: u.name.split(' ')[0], category: 'account', subject: 'Your Tafiki account details were updated', ref: u.id, paragraphs: [`The following details on your account were updated by Tafiki: ${fields}.`, 'If you did not request this, contact support@tafiki.com straight away.'] });
+  for (const to of [...new Set([u.email, upd.email || u.email])]) await sendEmail({ to, name: u.name.split(' ')[0], category: 'account', subject: 'Your Tafiki account details were updated', ref: u.id, title: 'Your account details were updated',
+    lead: 'Some details on your Tafiki account were updated by our team.',
+    blocks: [{ type: 'kv', title: 'What changed', rows: [['Fields updated', fields], ['Updated', K.when()], ['Account', u.name + (u.coop_no ? ' · ' + u.coop_no : '')]] },
+      { type: 'note', tone: 'warn', title: 'Not expected?', text: 'If you did not ask for this change, contact **support@tafiki.com** straight away.' }] });
   res.json({ user: present.userFull(await db('users').where({ id: u.id }).first()), changed });
 });
 r.post('/:id/reset-link', requirePerm('members'), async (req, res) => {
   const u = await getDb()('users').where({ id: req.params.id }).first(); if (!u) throw new HttpError(404, 'Member not found.');
   const { value } = await codes.issue('password_reset', 'user', u.id, { minutes: 30, token: true });
-  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'security', subject: 'Reset your Tafiki password', ref: u.id, paragraphs: ['A password reset was started for your account by Tafiki support.', `Use this link within 30 minutes: ${config.appUrl}/#reset?token=${value}`, 'If you did not ask for this, contact support@tafiki.com.'] });
+  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'security', subject: 'Reset your Tafiki password', ref: u.id, title: 'Reset your password',
+    lead: 'A password reset was started for your account by Tafiki support. Use the button below within **30 minutes** to choose a new password.',
+    cta: { label: 'Reset my password', url: `${config.appUrl}/#reset?token=${value}` },
+    blocks: [{ type: 'note', tone: 'warn', title: 'Not expected?', text: 'If you did not ask for this, contact **support@tafiki.com**. Your current password keeps working until it is changed.' }] });
   await activity.log(me(req), 'member.reset_link_sent', { type: 'user', id: u.id });
   res.json({ ok: true });
 });
@@ -66,7 +77,11 @@ r.post('/:id/temporary-password', requirePerm('members'), async (req, res) => {
   await db('users').where({ id: u.id }).update({ password_hash: await pw.hash(temp), must_change: true, updated_at: new Date() });
   await revokeAll('user', u.id);
   await activity.log(me(req), 'member.temporary_password_set', { type: 'user', id: u.id });
-  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'security', subject: 'Your Tafiki password was reset', ref: u.id, paragraphs: ['An administrator reset your password. Use the temporary password shared with you, then choose a new one when you sign in.'] });
+  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'security', subject: 'Your Tafiki password was reset', ref: u.id, title: 'Your password was reset',
+    lead: 'An administrator has reset your password.',
+    blocks: [{ type: 'kv', title: 'Security event', rows: [['Account', u.email], ['Reset', K.when()], ['By', 'Tafiki support']] }],
+    next: ['Sign in with the temporary password shared with you privately.', 'Choose a new password straight away when asked.'],
+    cta: { label: 'Sign in', url: K.link('login') } });
   res.json({ temporaryPassword: temp });
 });
 r.post('/:id/status', requirePerm('members'), async (req, res) => {

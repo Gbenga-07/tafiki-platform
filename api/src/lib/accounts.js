@@ -1,27 +1,44 @@
 // Account lifecycle: welcome on sign-up, active once the email is confirmed, suspended / reactivated, and closure.
 const { getDb } = require('../db');
 const { sendEmail } = require('./mailer');
+const K = require('./emailkit');
 const { bad } = require('./util');
 const { revokeAll } = require('./auth');
 const activity = require('./activity');
 const config = require('../config');
-const first = (u) => String(u.name || '').split(' ')[0];
+const first = (u) => (u.role === 'retailer' && /^mart manager$/i.test(String(u.name || '').trim()) ? 'Mart Manager' : String(u.name || '').split(' ')[0]);
 const day = (d) => new Date(d || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 const N = (n) => '₦' + Number(n || 0).toLocaleString('en-NG');
 
 async function welcome(u) {
   const mart = u.role === 'retailer';
   await sendEmail({ to: u.email, name: first(u), category: 'account', ref: u.id, subject: mart ? `Welcome to Tafiki: ${u.shop} is registered` : 'Welcome to Tafiki: your account is created',
-    paragraphs: mart ? [`Your FOODCORE Mart account for ${u.shop} has been created.`, 'Next: confirm your email with the code we sent, and confirm your phone number with the SMS code. Tafiki will review and approve your mart, then assign a package to it.']
-      : ['Your Tafiki account has been created and you are now a member of FOODCORE Multipurpose Cooperative, bound by its bye-laws.', 'Next steps: 1) confirm your email with the code we sent; 2) confirm your phone number with the SMS code; 3) complete your identity check from your dashboard. You can then reserve units in any open FOODCORE Mart.', 'Your first stake each membership year includes the yearly membership fee. It is non-refundable and earns no returns.'],
-    receipt: { title: 'Account details', rows: [['Name', u.name], ['Email', u.email], ['Phone', u.phone || ''], ['Account type', mart ? 'FOODCORE Mart' : 'Cooperative member'], ['Membership number', u.coop_no || ''], ['Terms accepted', u.terms_version ? 'Version ' + u.terms_version : 'Yes'], ['Joined', day(u.created_at)]], note: `Sign in at ${config.appUrl}/#login. If you did not create this account, reply to this email.` } });
+    title: mart ? `Welcome to Tafiki, ${u.shop}` : 'Welcome to Tafiki', preheader: mart ? 'Your FOODCORE Mart account is created' : 'You are now a member of FOODCORE Multipurpose Cooperative',
+    lead: mart ? `Your FOODCORE Mart account for **${u.shop}** has been created. We are glad to have you on board.` : 'Your Tafiki account has been created and you are now a member of **FOODCORE Multipurpose Cooperative**, bound by its bye-laws. We are glad to have you.',
+    blocks: [{ type: 'kv', title: 'Account details', rows: [['Name', u.name], ['Email', u.email], ['Phone', u.phone || ''], ['Account type', mart ? 'FOODCORE Mart' : 'Cooperative member'], ['Membership number', mart ? '' : u.coop_no || ''], ['Terms accepted', u.terms_version ? 'Version ' + u.terms_version : 'Yes'], ['Joined', day(u.created_at)]] },
+      mart ? { type: 'steps', title: 'Getting started', steps: [{ label: 'Account created', state: 'done', sub: K.short(u.created_at) }, { label: 'Email and phone', state: 'now', sub: 'Confirm with the codes' }, { label: 'Mart approved', state: 'todo', sub: 'By Tafiki' }, { label: 'Stock arrives', state: 'todo', sub: 'When a package opens' }] }
+        : { type: 'steps', title: 'Getting started', steps: [{ label: 'Account created', state: 'done', sub: K.short(u.created_at) }, { label: 'Email and phone', state: 'now', sub: 'Confirm with the codes' }, { label: 'Identity check', state: 'todo', sub: 'Smile ID, 2 minutes' }, { label: 'Buy units', state: 'todo', sub: 'Any open mart' }] },
+      mart ? null : { type: 'note', tone: 'info', text: `Your first stake each membership year includes the yearly membership fee${(await require('./terms').getTerms()).membershipFee ? ' of **' + K.N((await require('./terms').getTerms()).membershipFee) + '**' : ''}. It is not unit capital: it is non-refundable and earns no returns.` }],
+    next: mart ? ['Confirm your email with the code we sent, and your phone number with the SMS code.', 'Tafiki reviews and approves your mart, then assigns a package to it.', 'When the package is fully funded, stock is delivered to you on consignment.'] : ['Confirm your email with the code we sent, and your phone number with the SMS code.', 'Complete your identity check from your dashboard. It takes about two minutes.', 'Then buy units in any open FOODCORE Mart and track them from your dashboard.'],
+    cta: { label: 'Sign in to Tafiki', url: K.link('login') }, help: 'If you did not create this account, reply to this email straight away.' });
 }
 async function activated(u) {
-  await sendEmail({ to: u.email, name: first(u), category: 'account', ref: u.id, subject: 'Your Tafiki account is active', paragraphs: ['Thank you for confirming your email. Your Tafiki account is now active.', u.kyc_status === 'verified' ? 'Your identity is already verified, so you can reserve units straight away.' : 'Complete your identity check from your dashboard to start reserving units.'] });
+  await sendEmail({ to: u.email, name: first(u), category: 'account', ref: u.id, subject: 'Your Tafiki account is active', title: 'Your account is active',
+    lead: 'Thank you for confirming your email. Your Tafiki account is now **active**.',
+    blocks: [{ type: 'kv', title: 'Your account', rows: [['Name', u.name], ['Email', u.email + ' · confirmed'], ['Membership number', u.coop_no || ''], ['Identity check', u.kyc_status === 'verified' ? 'Verified' : u.kyc_status === 'pending' ? 'Not done yet' : 'Needs attention']] }],
+    next: u.role === 'retailer' ? ['Tafiki reviews and approves your mart.', 'You will be emailed when a package is assigned to it.'] : u.kyc_status === 'verified' ? ['Your identity is already verified, so you can buy units straight away.'] : ['Complete your **identity check** from your dashboard.', 'Then buy units in any open FOODCORE Mart.'],
+    cta: { label: 'Go to my dashboard', url: K.link('login') } });
 }
 async function statusChanged(u, status, reason) {
-  if (status === 'suspended') await sendEmail({ to: u.email, name: first(u), category: 'account', ref: u.id, subject: 'Your Tafiki account has been suspended', paragraphs: [`Your Tafiki account was suspended on ${day()}${reason ? ': ' + reason : '.'}`, 'You cannot sign in while it is suspended. Your units and wallet are unaffected. Contact support@tafiki.com to resolve this.'] });
-  if (status === 'active') await sendEmail({ to: u.email, name: first(u), category: 'account', ref: u.id, subject: 'Your Tafiki account is active again', paragraphs: ['Your Tafiki account has been reactivated. You can sign in again.'] });
+  if (status === 'suspended') await sendEmail({ to: u.email, name: first(u), category: 'account', ref: u.id, subject: 'Your Tafiki account has been suspended', title: 'Your account has been suspended',
+    lead: `Your Tafiki account was suspended on **${day()}**.`,
+    blocks: [{ type: 'kv', title: 'Account', rows: [['Name', u.name], ['Membership number', u.coop_no || ''], ['Suspended', K.when()], ['Reason', reason || 'Not given']] },
+      { type: 'note', tone: 'warn', text: 'You cannot sign in while your account is suspended. **Your units and wallet are not affected** and keep their value.' }],
+    next: ['Reply to this email or write to support@tafiki.com to resolve this.', 'We will reactivate your account as soon as the issue is cleared.'] });
+  if (status === 'active') await sendEmail({ to: u.email, name: first(u), category: 'account', ref: u.id, subject: 'Your Tafiki account is active again', title: 'Your account is active again',
+    lead: 'Good news. Your Tafiki account has been **reactivated** and you can sign in again.',
+    blocks: [{ type: 'kv', title: 'Account', rows: [['Name', u.name], ['Membership number', u.coop_no || ''], ['Reactivated', K.when()]] }],
+    cta: { label: 'Sign in to Tafiki', url: K.link('login') } });
 }
 // Closing is allowed only when nothing is still owed either way.
 async function blockers(u) {
@@ -44,7 +61,10 @@ async function close(u, actor, reason) {
   if (!(await db('users').where({ id: u.id }).whereNot({ status: 'closed' }).update({ status: 'closed', updated_at: new Date() }))) throw bad('This account is already closed.');
   await revokeAll('user', u.id);
   await activity.log(actor, 'member.closed', { type: 'user', id: u.id }, { reason: reason || null });
-  await sendEmail({ to: u.email, name: first(u), category: 'account', ref: u.id, subject: 'Your Tafiki account is closed', paragraphs: [`Your Tafiki account was closed on ${day()}${actor.type === 'admin' ? ' by Tafiki' : ' at your request'}.`, 'Your cooperative membership ends with it. We keep your transaction records for as long as the law requires, then delete them.', 'If you did not ask for this, contact support@tafiki.com straight away.'],
-    receipt: { title: 'Closure statement', rows: [['Name', u.name], ['Membership number', u.coop_no || ''], ['Closed', day()], ['Units held', 'None'], ['Wallet balance', N(0)], ['Reason', reason || '']] } });
+  await sendEmail({ to: u.email, name: first(u), category: 'account', ref: u.id, subject: 'Your Tafiki account is closed', title: 'Your account is closed',
+    lead: `Your Tafiki account was closed on **${day()}**${actor.type === 'admin' ? ' by Tafiki' : ' at your request'}. Thank you for being part of FOODCORE.`,
+    receipt: { title: 'Closure statement', rows: [['Name', u.name], ['Membership number', u.coop_no || ''], ['Closed', K.when()], ['Units held', 'None'], ['Wallet balance', K.N(0)], ['Reason', reason || '']] },
+    paragraphs: ['Your cooperative membership ends with your account. We keep your transaction records for as long as the law requires, then delete them.'],
+    blocks: [{ type: 'note', tone: 'warn', title: 'Not you?', text: 'If you did not ask for this, contact **support@tafiki.com** straight away.' }] });
 }
 module.exports = { welcome, activated, statusChanged, blockers, close };

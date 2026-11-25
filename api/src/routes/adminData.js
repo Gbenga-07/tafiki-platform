@@ -12,6 +12,7 @@ const { bad, HttpError, randomToken, sha256, uuid } = require('../lib/util');
 const pw = require('../lib/passwords');
 const activity = require('../lib/activity');
 const { sendEmail } = require('../lib/mailer');
+const K = require('../lib/emailkit');
 const r = express.Router();
 r.use(requireAdmin);
 const superOnly = (req, res, next) => (req.admin.role === 'Super Admin' ? next() : next(new HttpError(403, 'Only a Super Admin can do this.')));
@@ -73,7 +74,10 @@ r.post('/data/reset/confirm', superOnly, async (req, res) => {
   await db.transaction(async (trx) => { for (const t of RESET_TABLES) removed[t] = await trx(t).del(); });
   await activity.log(me(req), 'data.reset', { type: 'system', id: 'all' }, { removed, backup: path.basename(file) });
   const supers = await db('admins').where({ role: 'Super Admin', status: 'active' });
-  for (const s of supers) await sendEmail({ to: s.email, name: s.name.split(' ')[0], category: 'security', ref: 'reset', subject: 'All Tafiki data was reset', paragraphs: [`${req.admin.name} reset all platform data on ${new Date().toUTCString()}. Members, marts, packages, payments, wallets, deliveries and emails were removed. Console admins and settings were kept.`, `A backup was saved on the server as ${path.basename(file)}.`, 'If you did not expect this, contact your Super Admins straight away.'] });
+  for (const s of supers) await sendEmail({ to: s.email, name: s.name.split(' ')[0], category: 'security', ref: 'reset', subject: 'All Tafiki data was reset', title: 'All platform data was reset',
+    lead: `**${req.admin.name}** reset all platform data. Members, marts, packages, payments, wallets, deliveries and emails were removed. Console admins and settings were kept.`,
+    blocks: [{ type: 'kv', title: 'Reset details', rows: [['Done by', `${req.admin.name} · ${req.admin.email}`], ['Time', K.when()], ['Backup saved as', path.basename(file)]] },
+      { type: 'note', tone: 'bad', title: 'Not expected?', text: 'If you did not expect this, contact your Super Admins straight away. The backup above can restore the data.' }], help: false });
   res.json({ ok: true, removed, backup: path.basename(file) });
 });
 module.exports = r;

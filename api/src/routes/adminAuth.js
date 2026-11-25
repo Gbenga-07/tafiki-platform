@@ -8,6 +8,7 @@ const { getSetting } = require('../lib/settings');
 const lockout = require('../lib/lockout');
 const codes = require('../lib/codes');
 const { sendEmail } = require('../lib/mailer');
+const K = require('../lib/emailkit');
 const activity = require('../lib/activity');
 const present = require('../lib/present');
 const { ROLES } = require('../lib/permissions');
@@ -37,7 +38,10 @@ r.post('/login', async (req, res) => {
   const sec = await getSetting('security');
   if (sec.twofa) {
     const { value } = await codes.issue('admin_2fa', 'admin', a.id, { minutes: 10 });
-    await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'security', subject: 'Your Tafiki Console verification code', paragraphs: [`Your verification code is ${value}. It expires in 10 minutes.`, 'If you did not try to sign in, tell a Super Admin straight away.'] });
+    await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'security', subject: 'Your Tafiki Console verification code', title: 'Your sign-in code',
+      lead: `Your verification code is ${value}. Enter it in the Tafiki Console to finish signing in.`,
+      blocks: [{ type: 'code', title: 'Verification code', code: value, sub: 'Expires in 10 minutes · use it once' }, { type: 'kv', title: 'Sign-in attempt', rows: [['Account', a.email], ['Role', a.role], ['Time', K.when()], ['From', req.ip || '']] },
+        { type: 'note', tone: 'bad', title: 'Not you?', text: 'If you did not try to sign in, **tell a Super Admin straight away**. Never share this code, not even with Tafiki staff.' }], help: false });
     const ticket = randomToken(24);
     await getDb()('codes').insert({ id: require('../lib/util').uuid(), purpose: 'admin_ticket', subject_type: 'admin', subject_id: a.id, code_hash: sha256(ticket), expires_at: addMinutes(now(), 10) });
     return res.json({ step: 'code', ticket });

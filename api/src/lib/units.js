@@ -7,6 +7,7 @@ const { HttpError, bad, now, addMinutes } = require('./util');
 const counters = require('./counters');
 const { getTerms } = require('./terms');
 const { sendEmail } = require('./mailer');
+const K = require('./emailkit');
 const activity = require('./activity');
 
 const HELD = ['unpaid', 'confirming', 'reserved', 'active', 'redeem'];
@@ -31,7 +32,14 @@ async function issueCertificate(h, user, trx) {
   const certNo = `FC-C-${new Date().getFullYear()}-${String(n).padStart(4, '0')}`;
   const won = await (trx || getDb())('holdings').where({ id: h.id }).whereNull('cert_no').update({ cert_no: certNo, issued_at: now() });
   if (!won) return (await getDb()('holdings').where({ id: h.id }).first()).cert_no; // another request issued it
-  await sendEmail({ to: user.email, name: user.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Your Certificate of Stake ${certNo}`, paragraphs: [`Your ${h.units} unit${h.units > 1 ? 's' : ''} (${h.ref}) are confirmed and your Certificate of Stake ${certNo} has been issued.`, `Verification code: ${verifyCode(h.ref, certNo, user.name)}. You can download the certificate from your dashboard.`] });
+  await sendEmail({ to: user.email, name: user.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Your Certificate of Stake ${certNo}`,
+    title: 'Your Certificate of Stake is issued', preheader: `${K.units(h.units)} confirmed in ${(await getDb()('packages').where({ id: h.package_id }).first() || {}).name || 'FOODCORE'}`,
+    lead: `Congratulations. Your **${K.units(h.units)}** are confirmed and your Certificate of Stake **${certNo}** has been issued in your name.`,
+    blocks: [{ type: 'kv', title: 'Certificate details', rows: [['Certificate number', certNo], ['Issued to', user.name + (user.coop_no ? ' · ' + user.coop_no : '')], ['Stake reference', h.ref], ['FOODCORE Mart', (await getDb()('packages').where({ id: h.package_id }).first() || {}).name || ''], ['Units', `${K.units(h.units)} · ${K.N(h.units * (await getTerms()).unitPrice)} unit capital`], ['Issued on', K.day()], ['Verification code', verifyCode(h.ref, certNo, user.name)]] },
+      K.stakeSteps(h.status === 'active' ? 3 : 2, { paid: h.paid_at ? K.short(h.paid_at) : undefined, confirmed: K.short(), trading: h.status === 'active' ? 'Earning now' : 'When the package is full' }),
+      { type: 'note', tone: 'ok', text: 'Anyone can check this certificate is genuine with the verification code above. Keep it safe; it is your proof of ownership of these units.' }],
+    next: h.status === 'active' ? ['Your units are already trading and earning.', 'Returns are paid into your Tafiki wallet at the end of each 90-day cycle.', 'Download the certificate any time from **My Investments** on your dashboard.'] : ['The package opens once every unit in it is paid and confirmed.', 'Stock then goes to the mart and your units start earning.', 'Download the certificate any time from **My Investments** on your dashboard.'],
+    cta: { label: 'Download my certificate', url: K.link('me-invest') } });
   return certNo;
 }
 
@@ -58,7 +66,12 @@ async function settle(holdingId, actor) {
     if (!(await db('packages').where({ id: p.id, stage: 'funding' }).update({ stage: 'full' }))) return db('holdings').where({ id: h.id }).first();
     await activity.log({ type: 'system' }, 'package.full', { type: 'package', id: p.id }, { units: confirmed });
     const admins = await db('admins').where({ status: 'active' }).whereIn('role', ['Super Admin', 'Operations Manager']);
-    for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: p.id, subject: `${p.name} is fully subscribed`, paragraphs: [`All ${p.units_total} units in ${p.name} are confirmed (${fmtN(p.units_total * terms.unitPrice)}).`, 'Open the package in the Tafiki Console to assign the mart and start trading.'] });
+    for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: p.name, subject: `${p.name} is fully subscribed`,
+      title: 'A package is fully subscribed', lead: `Every unit in **${p.name}** is now paid and confirmed. It is ready to open.`,
+      hero: { label: 'Capital confirmed', value: K.N(p.units_total * terms.unitPrice), sub: `${K.units(p.units_total)} · held in escrow`, tone: 'in' },
+      blocks: [{ type: 'kv', title: 'Package', rows: [['Package', p.name], ['Location', [p.area, p.city].filter(Boolean).join(', ')], ['Units', `${p.units_total} of ${p.units_total} confirmed`], ['Unit price', K.N(terms.unitPrice)], ['Full since', K.when()]] }],
+      next: ['Open the package in the Tafiki Console and confirm its FOODCORE Mart.', 'Opening raises the first stock orders and starts the first 90-day cycle.', 'Unit holders are emailed automatically when it opens.'],
+      cta: { label: 'Open the Tafiki Console', url: K.consoleLink() }, help: 'This is an automatic alert for Super Admins and Operations Managers.' });
   }
   return db('holdings').where({ id: h.id }).first();
 }
@@ -84,7 +97,12 @@ async function markPaymentSuccess(payment, { channel, raw, by, mustWin } = {}) {
       await db('payments').where({ id: payment.id }).update({ status: 'refund_due' });
       await activity.log(actor, 'payment.refund_due', { type: 'payment', id: payment.id }, { ref: h.ref, amount: stakePart, membershipFeeKept: Number(payment.fee_amount) || 0 });
       const admins = await db('admins').where({ status: 'active' }).whereIn('role', ['Super Admin', 'Finance Officer']);
-      for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: h.ref, subject: `Refund needed: payment for ${h.ref} arrived after its units were released`, paragraphs: [`${fmtN(payment.amount)} (reference ${payment.reference}) was paid after the reservation lapsed and the units are no longer available.`, Number(payment.fee_amount) ? `Refund the stake part, ${fmtN(stakePart)}, or offer units in another package. The ${fmtN(payment.fee_amount)} yearly membership fee in this payment is non-refundable and the membership is now active.` : 'Refund the member or offer units in another package.'] });
+      for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: h.ref, subject: `Refund needed: payment for ${h.ref} arrived after its units were released`,
+        title: 'A late payment needs a refund', lead: `A payment for **${h.ref}** arrived after its checkout lapsed, and the units are no longer available.`,
+        hero: { label: 'Refund due', value: K.N(stakePart), sub: Number(payment.fee_amount) ? `The ${K.N(payment.fee_amount)} membership fee is kept: it is non-refundable and the membership is now active.` : 'The whole payment is refundable.', tone: 'warn' },
+        blocks: [{ type: 'kv', title: 'Payment', rows: [['Member', (await db('users').where({ id: h.user_id }).first() || {}).name || ''], ['Stake reference', h.ref], ['Units', K.units(h.units)], ['Amount paid', K.N(payment.amount)], ['Payment reference', payment.reference], ['Method', payment.provider === 'transfer' ? 'Bank transfer' : 'Paystack'], ['Received', K.when()]] }],
+        next: ['Contact the member and offer units in another open package, or', `refund ${K.N(stakePart)} to them and record the refund in the console.`],
+        cta: { label: 'Open the Tafiki Console', url: K.consoleLink() }, help: 'This is an automatic alert for Super Admins and Finance Officers.' });
       return h;
     }
   }
@@ -92,8 +110,14 @@ async function markPaymentSuccess(payment, { channel, raw, by, mustWin } = {}) {
   h = await db('holdings').where({ id: payment.holding_id }).first();
   const u = await db('users').where({ id: h.user_id }).first();
   const pkg = await db('packages').where({ id: h.package_id }).first(); const fee = Number(payment.fee_amount) || 0;
-  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'receipts', ref: h.ref, subject: `Receipt: payment received for ${h.ref}`, paragraphs: [fee ? `Thank you. We have received ${fmtN(payment.amount)}: ${fmtN(stakePart)} for your units and ${fmtN(fee)} for your yearly cooperative membership. The unit money is held in the escrow account until the mart opens. The membership fee is non-refundable and earns no returns; returns are paid on your units only.` : `Thank you. We have received ${fmtN(payment.amount)} for your units. The money is held in the escrow account until the mart opens.`, u.kyc_status === 'verified' ? 'Your units are now confirmed. Your Certificate of Stake follows in a separate email.' : 'Your units will be confirmed as soon as your identity check is complete.'],
-    receipt: { title: 'Payment receipt', amount: Number(payment.amount), direction: 'in', rows: [['Paid by', `${u.name}${u.coop_no ? ' · ' + u.coop_no : ''}`], ['FOODCORE Mart', pkg ? pkg.name : ''], ['Stake reference', h.ref], ['Units', `${h.units} × ${fmtN(stakePart / h.units)}`], ['Units subtotal', fmtN(stakePart)], fee ? ['Yearly membership fee', fmtN(fee) + (u.membership_until ? ' · valid until ' + new Date(u.membership_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '')] : null, ['Method', payment.provider === 'transfer' ? 'Bank transfer to escrow' : 'Card / bank via Paystack'], ['Payment reference', payment.reference]], total: ['Total paid', fmtN(payment.amount)], note: fee ? 'Unit capital is held in escrow. The membership fee is non-refundable and earns no returns.' : 'Unit capital is held in escrow until the mart opens.' } });
+  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'receipts', ref: h.ref, subject: `Receipt: payment received for ${h.ref}`,
+    title: `Payment received for ${h.ref}`, preheader: `${fmtN(payment.amount)} received for ${K.units(h.units)} in ${pkg ? pkg.name : 'FOODCORE'}`,
+    lead: fee ? `Thank you. We have received your payment of **${fmtN(payment.amount)}**: ${fmtN(stakePart)} for **${K.units(h.units)}** in **${pkg ? pkg.name : 'FOODCORE'}** and ${fmtN(fee)} for your yearly cooperative membership.` : `Thank you. We have received your payment of **${fmtN(payment.amount)}** for **${K.units(h.units)}** in **${pkg ? pkg.name : 'FOODCORE'}**.`,
+    hero: { label: 'Amount received', value: fmtN(payment.amount), sub: `${payment.provider === 'transfer' ? 'Bank transfer to escrow' : 'Paid through Paystack'}${payment.channel ? ' · ' + String(payment.channel).replace(/_/g, ' ') : ''} · ${payment.reference}`, tone: 'in' },
+    blocks: [K.stakeSteps(u.kyc_status === 'verified' ? 2 : 1, { bought: K.short(h.created_at), paid: K.short(), confirmed: u.kyc_status === 'verified' ? 'Certificate next' : 'After ID check', trading: pkg ? `${await unitsConfirmed(pkg.id)} of ${pkg.units_total} units paid` : undefined })],
+    receipt: { title: 'Payment receipt', amount: Number(payment.amount), direction: 'in', rows: [['Paid by', `${u.name}${u.coop_no ? ' · ' + u.coop_no : ''}`], ['FOODCORE Mart', pkg ? pkg.name : ''], ['Stake reference', h.ref], ['Units', `${h.units} × ${fmtN(stakePart / h.units)}`], ['Units subtotal', fmtN(stakePart)], fee ? ['Yearly membership fee', fmtN(fee) + (u.membership_until ? ' · valid until ' + K.day(u.membership_until) : '')] : null, ['Method', payment.provider === 'transfer' ? 'Bank transfer to escrow' : 'Card / bank via Paystack'], ['Payment reference', payment.reference]].filter(Boolean), total: ['Total paid', fmtN(payment.amount)], note: fee ? 'Unit capital is held in escrow until the mart opens. The membership fee is not unit capital: it is non-refundable and earns no returns.' : 'Unit capital is held in escrow until the mart opens.' },
+    next: [u.kyc_status === 'verified' ? 'Your units are confirmed now. Your **Certificate of Stake** follows in a separate email.' : 'Complete your **identity check** from your dashboard. Your units are confirmed as soon as it passes.', 'When every unit in the package is paid, it opens and stock goes to the mart.', 'From then on, returns are paid into your Tafiki wallet at the end of each 90-day cycle.'],
+    cta: { label: 'View my stake', url: K.link('me-invest') } });
   return settle(h.id, by ? { type: 'admin', id: by } : { type: 'system' });
 }
 
@@ -113,7 +137,12 @@ async function expireReservations() {
     if (!won) continue; n++;
     await db('payments').where({ holding_id: h.id, status: 'initialized' }).update({ status: 'failed' });
     const u = await db('users').where({ id: h.user_id }).first();
-    if (u) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Your checkout for ${h.ref} was not completed`, paragraphs: ['The payment for these units was not completed in time, so the units have been released. No money was taken.', 'You can buy again from your dashboard while units are still open.'] });
+    if (u) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Your checkout for ${h.ref} was not completed`,
+      title: 'Your checkout was not completed', lead: `The payment for **${K.units(h.units)}** (${h.ref}) was not completed in time, so the units have been released. **No money was taken.**`,
+      blocks: [{ type: 'kv', title: 'Purchase', rows: [['Stake reference', h.ref], ['FOODCORE Mart', (await db('packages').where({ id: h.package_id }).first() || {}).name || ''], ['Units', K.units(h.units)], ['Started', K.when(h.created_at)], ['Released', K.when()]] },
+        { type: 'note', tone: 'info', text: 'If money did leave your account, it is usually reversed by your bank within 24 hours. If not, reply with the Paystack reference and we will sort it out.' }],
+      next: ['You can buy again from your dashboard while units are still open.', 'Checkout holds your units for 30 minutes, so keep the payment page open until it says **successful**.'],
+      cta: { label: 'Buy units', url: K.link('invest') } });
   }
   return n;
 }
@@ -145,7 +174,12 @@ async function releaseUnconfirmed(holdingId, actor) {
   await db('payments').where({ holding_id: h.id }).whereIn('status', ['initialized', 'pending_review']).update({ status: 'failed' });
   await activity.log(actor, 'units.released', { type: 'holding', id: h.id }, { ref: h.ref, units: h.units, waitingHours: Math.floor((now() - since) / 3600000) });
   const u = await db('users').where({ id: h.user_id }).first();
-  if (u) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Your units for ${h.ref} have been released`, paragraphs: [`We could not confirm a payment for ${h.ref} (${h.units} unit${h.units > 1 ? 's' : ''}) within ${hrs} hours, so the units have been released for other members.`, 'If you did send money, reply to this email with your proof of payment and we will check it and refund you or offer units in another package.', 'You can buy again from your dashboard while units are still open.'] });
+  if (u) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Your units for ${h.ref} have been released`,
+    title: 'Your units have been released', lead: `We could not confirm a payment for **${h.ref}** within ${hrs} hours, so its **${K.units(h.units)}** have been released for other members.`,
+    blocks: [{ type: 'kv', title: 'Purchase', rows: [['Stake reference', h.ref], ['FOODCORE Mart', (await db('packages').where({ id: h.package_id }).first() || {}).name || ''], ['Units', K.units(h.units)], ['Waiting since', K.when(since)], ['Released', K.when()]] },
+      { type: 'note', tone: 'warn', title: 'Did you pay?', text: 'Reply to this email with your **proof of payment** (bank receipt or Paystack reference). We will check it and either refund you in full or offer you units in another open package.' }],
+    next: ['You can buy again from your dashboard while units are still open.'],
+    cta: { label: 'Go to my dashboard', url: K.link('me') } });
   return db('holdings').where({ id: h.id }).first();
 }
 
@@ -166,10 +200,21 @@ async function openPackage(packageId, storeUserId, actor) {
   for (const h of hs) {
     await db('holdings').where({ id: h.id }).update({ status: 'active', active_since: now() });
     const u = await db('users').where({ id: h.user_id }).first();
-    await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `${p.name} is open and trading`, paragraphs: [`${p.name} is now open. Your ${h.units} unit${h.units > 1 ? 's' : ''} (${h.ref}) are earning from today.`, 'Stock is on its way to the mart. You will see each delivery on your dashboard.'] });
+    await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `${p.name} is open and trading`,
+      title: 'Your units are now earning', preheader: `${p.name} is open and trading at ${store.shop}`,
+      lead: `Good news. **${p.name}** is fully funded and now trading at **${store.shop}**. Your **${K.units(h.units)}** (${h.ref}) are earning from today.`,
+      blocks: [K.stakeSteps(3, { bought: K.short(h.created_at), paid: h.paid_at ? K.short(h.paid_at) : undefined, confirmed: h.issued_at ? K.short(h.issued_at) : undefined, trading: 'From ' + K.short() }),
+        { type: 'kv', title: 'Your stake', rows: [['Stake reference', h.ref], ['Certificate', h.cert_no || ''], ['FOODCORE Mart', store.shop], ['Units', `${K.units(h.units)} · ${K.N(h.units * (await getTerms()).unitPrice)}`], ['Trading from', K.day()], ['First cycle ends', K.day(K.addDays(Date.now(), (await getTerms()).cycleDays || 90))]] }],
+      next: ['Stock is on its way to the mart. You will get an email when it is delivered.', `The mart's sales are audited on day 28 of each cycle and its remittance is checked.`, 'Your returns are paid into your Tafiki wallet at the end of each 90-day cycle, with an email advice.'],
+      cta: { label: 'Track my stake', url: K.link('me-invest') } });
   }
   await activity.log(actor, 'package.opened', { type: 'package', id: p.id }, { store: store.shop, holdings: hs.length });
-  await sendEmail({ to: store.email, name: 'Mart Manager', category: 'operations', ref: p.id, subject: `${p.name} is open: stock is on its way to ${store.shop}`, paragraphs: [`${p.name} is fully funded and now trading at ${store.shop}.`, 'Stock orders have been raised. You will get an email at each delivery stage, your delivery code by SMS, and a goods-received note when each load arrives.'], receipt: { title: 'Package opened', rows: [['Mart', store.shop], ['Package', p.name], ['Units funded', String(p.units_total)], ['Stock value to receive', fmtN(p.units_total * (await getTerms()).unitPrice)], ['Opened', new Date().toDateString()]] } });
+  await sendEmail({ to: store.email, name: 'Mart Manager', category: 'operations', ref: p.name, subject: `${p.name} is open: stock is on its way to ${store.shop}`,
+    title: `${store.shop} is open for trading`, lead: `**${p.name}** is fully funded and now trading at **${store.shop}**. Your first stock orders have been raised at the Tafiki Distribution Centre.`,
+    hero: { label: 'Stock value to receive', value: K.N(p.units_total * (await getTerms()).unitPrice), sub: `${p.units_total} stock packs · on consignment`, tone: 'info' },
+    blocks: [{ type: 'kv', title: 'Your mart', rows: [['Mart', store.shop], ['Package', p.name], ['Stock packs', String(p.units_total)], ['Opened', K.when()], ['First audit', 'Day 28 · ' + K.day(K.addDays(Date.now(), 28))], ['Cycle ends', K.day(K.addDays(Date.now(), (await getTerms()).cycleDays || 90))]] }, K.cycleSteps(0, { stock: 'On the way' })],
+    next: ['You will get an email at every delivery stage, and your **delivery code by SMS** when a load is in transit.', 'Count the bags before you give the driver the code. A goods-received note follows each delivery.', 'Record your sales in the mart portal. Your stock is audited on day 28 and the remittance is settled after it.'],
+    cta: { label: 'Open my mart portal', url: K.link('login') } });
   return db('packages').where({ id: p.id }).first();
 }
 module.exports = { HELD, CONFIRMED, unitsTaken, unitsConfirmed, settle, markPaymentSuccess, onKycVerified, expireReservations, releaseUnconfirmed, waitingSince, releaseAfterHours, openPackage, verifyCode, issueCertificate };

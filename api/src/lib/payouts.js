@@ -7,6 +7,7 @@ const { uuid, bad, HttpError, now, addMinutes } = require('./util');
 const { getTerms } = require('./terms');
 const counters = require('./counters');
 const { sendEmail } = require('./mailer');
+const K = require('./emailkit');
 const activity = require('./activity');
 const N = (n) => '₦' + Number(n).toLocaleString('en-NG');
 const DAY = 24 * 60;
@@ -53,7 +54,14 @@ async function run(packageId, profit, actor, note) {
     await trx('payout_runs').insert({ id, package_id: packageId, cycle_no: cycleNo, period_start: start, period_end: now(), profit: c.profit, tax: c.tax, units: c.units, per_unit: c.perUnit, investors_total: c.investorsTotal, reserve_used: c.reserveUsed, reserve_added: c.reserveAdded, company: c.company, operations: c.operations, capped: c.capped, note: note || null, created_by: actor.id });
     for (const h of c.holdings) if (h.amount > 0) await trx('wallet_tx').insert({ id: uuid(), user_id: h.userId, type: 'payout', amount: h.amount, status: 'completed', memo: `${p.name} · payout ${cycleNo}`, ref: h.ref, payout_run_id: id, holding_id: h.id, created_at: new Date() });
   });
-  for (const h of c.holdings) { const u = await db('users').where({ id: h.userId }).first(); if (h.amount > 0) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'payouts', ref: h.ref, subject: `Payout ${cycleNo} from ${p.name}: ${N(h.amount)}`, paragraphs: [`Your payout for cycle ${cycleNo} of ${p.name} has been paid into your Tafiki wallet.`, 'You can withdraw it to your bank account from your dashboard at any time.'], receipt: { title: 'Payout advice', amount: h.amount, direction: 'out', rows: [['Paid to', `${u.name}${u.coop_no ? ' · ' + u.coop_no : ''}`], ['FOODCORE Mart', p.name], ['Cycle', `${cycleNo} · ${new Date(start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} to ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`], ['Stake reference', h.ref], ['Units', `${h.units} × ${N(c.perUnit)} per unit`], ['Paid into', 'Tafiki wallet'], ['Wallet balance now', N(await walletBalance(u.id))]], total: ['Payout', N(h.amount)], note: 'Payouts come from the mart’s realised profit. Targets are not guaranteed.' } }); }
+  for (const h of c.holdings) { const u = await db('users').where({ id: h.userId }).first(); if (h.amount > 0) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'payouts', ref: h.ref, subject: `Payout ${cycleNo} from ${p.name}: ${N(h.amount)}`,
+    title: 'Your returns are in your wallet', preheader: `${K.N(h.amount)} from ${p.name}, cycle ${cycleNo}`,
+    lead: `Your returns for **cycle ${cycleNo}** of **${p.name}** have been paid into your Tafiki wallet.`,
+    hero: { label: 'Paid to your wallet', value: K.N(h.amount), sub: `${K.units(h.units)} × ${K.N(c.perUnit)} per unit · cycle ${cycleNo}`, tone: 'out' },
+    blocks: [{ type: 'kv', title: 'How this cycle went', rows: [['Trading period', `${K.short(start)} to ${K.day()}`], ['Mart profit after tax', K.N(c.profit - c.tax)], ['Paid per unit', K.N(c.perUnit)], ['Your returns to date', K.N(Number((await db('wallet_tx').where({ holding_id: h.id, type: 'payout' }).sum({ s: 'amount' }).first()).s) || h.amount)]] }],
+    receipt: { title: 'Payout advice', amount: h.amount, direction: 'out', rows: [['Paid to', `${u.name}${u.coop_no ? ' · ' + u.coop_no : ''}`], ['FOODCORE Mart', p.name], ['Cycle', `${cycleNo} · ${K.short(start)} to ${K.day()}`], ['Stake reference', h.ref], ['Units', `${h.units} × ${K.N(c.perUnit)} per unit`], ['Paid into', 'Tafiki wallet'], ['Wallet balance now', K.N(await walletBalance(u.id))]], total: ['Payout', K.N(h.amount)], note: 'Payouts come from the mart’s realised profit after tax. Targets are not guaranteed.' },
+    next: ['Withdraw to your bank any time from **Wallet** on your dashboard. You will be asked for an SMS code.', `The next cycle runs for ${t.cycleDays} days; its payout is paid the same way.`, 'Your units keep earning until you choose to redeem them.'],
+    cta: { label: 'Open my wallet', url: K.link('me-wallet') } }); }
   await activity.log(actor, 'payout.run', { type: 'package', id: packageId }, { cycleNo, profit: c.profit, perUnit: c.perUnit, investors: c.investorsTotal });
   return { id, cycleNo, ...c };
 }
@@ -78,7 +86,13 @@ async function requestWithdrawal(user, amount) {
     await trx('wallet_tx').insert({ id: uuid(), user_id: user.id, type: 'withdrawal', amount: -amount, status: 'processing', memo: `To ${user.bank_name} ••${String(user.bank_account).slice(-4)}`, ref, withdrawal_id: id, created_at: new Date() });
   }));
   await activity.log({ type: 'user', id: user.id }, 'wallet.withdrawal_requested', { type: 'withdrawal', id }, { ref, amount });
-  await sendEmail({ to: user.email, name: user.name.split(' ')[0], category: 'wallet', ref, subject: `Withdrawal ${ref} received`, paragraphs: [`We have received your request to withdraw ${N(amount)} to ${user.bank_name} ••${String(user.bank_account).slice(-4)}. It is usually paid within two working days, and you will get a payment advice when it is sent.`, 'If you did not ask for this withdrawal, reply to this email or call us straight away.'] });
+  await sendEmail({ to: user.email, name: user.name.split(' ')[0], category: 'wallet', ref, subject: `Withdrawal ${ref} received`,
+    title: 'We have received your withdrawal request', lead: `Your request to withdraw **${K.N(amount)}** to **${K.bank(user)}** is recorded and with our finance team.`,
+    hero: { label: 'Withdrawal requested', value: K.N(amount), sub: `Reference ${ref} · usually paid within two working days`, tone: 'info' },
+    blocks: [K.payoutSteps(1, { requested: K.short(), processing: 'Finance team', paid: 'Advice by email' }),
+      { type: 'kv', title: 'Withdrawal details', rows: [['Reference', ref], ['Amount', K.N(amount)], ['To account', `${user.bank_account_name || user.name}`], ['Bank', K.bank(user)], ['Requested', K.when()], ['Wallet balance after', K.N(await walletBalance(user.id))]] },
+      { type: 'note', tone: 'warn', title: 'Not you?', text: 'If you did not ask for this withdrawal, reply to this email or call us **straight away** so we can stop it.' }],
+    next: ['Our finance team pays it to your bank account.', 'You get a **payment advice** with the bank transfer reference as soon as it is sent.'] });
   return db('withdrawals').where({ id }).first();
 }
 async function decideWithdrawal(id, ok, actor, { transferReference, reason } = {}) {
@@ -92,8 +106,17 @@ async function decideWithdrawal(id, ok, actor, { transferReference, reason } = {
   });
   if (!won) throw bad('This withdrawal has already been decided.');
   const u = await db('users').where({ id: w.user_id }).first();
-  if (ok) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'payouts', ref: w.ref, subject: `Withdrawal ${w.ref} paid: ${N(w.amount)}`, paragraphs: [`${N(w.amount)} has been sent to your bank account. Depending on your bank it can take a few hours to show.`], receipt: { title: 'Payment advice', amount: Number(w.amount), direction: 'out', rows: [['Paid to', `${w.bank_account_name || u.name}`], ['Bank', `${w.bank_name} ••${String(w.bank_account).slice(-4)}`], ['Withdrawal reference', w.ref], ['Bank transfer reference', transferReference], ['Requested', new Date(w.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })], ['Wallet balance now', N(await walletBalance(u.id))]], total: ['Amount paid', N(w.amount)] } });
-  else await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'wallet', ref: w.ref, subject: `Withdrawal ${w.ref} was not paid`, paragraphs: [`We could not pay your withdrawal of ${N(w.amount)}${reason ? ': ' + reason : ''}. The full amount is back in your wallet (balance ${N(await walletBalance(u.id))}).`] });
+  if (ok) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'payouts', ref: w.ref, subject: `Withdrawal ${w.ref} paid: ${N(w.amount)}`,
+    title: 'Your withdrawal has been paid', lead: `**${K.N(w.amount)}** has been sent to your bank account. Depending on your bank it can take a few hours to show.`,
+    hero: { label: 'Sent to your bank', value: K.N(w.amount), sub: `${w.bank_name} ${K.mask(w.bank_account)} · transfer reference ${transferReference}`, tone: 'out' },
+    blocks: [K.payoutSteps(2, { requested: K.short(w.created_at), processing: 'Done', paid: K.short() })],
+    receipt: { title: 'Payment advice', amount: Number(w.amount), direction: 'out', rows: [['Paid to', `${w.bank_account_name || u.name}`], ['Bank', `${w.bank_name} ${K.mask(w.bank_account)}`], ['Withdrawal reference', w.ref], ['Bank transfer reference', transferReference], ['Requested', K.when(w.created_at)], ['Paid', K.when()], ['Wallet balance now', K.N(await walletBalance(u.id))]], total: ['Amount paid', K.N(w.amount)] },
+    help: `If the money has not arrived within 24 hours, reply quoting **${w.ref}** and the bank transfer reference above.` });
+  else await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'wallet', ref: w.ref, subject: `Withdrawal ${w.ref} was not paid`,
+    title: 'Your withdrawal could not be paid', lead: `We could not pay your withdrawal of **${K.N(w.amount)}**. **The full amount is back in your wallet.**`,
+    blocks: [{ type: 'kv', title: 'Withdrawal', rows: [['Reference', w.ref], ['Amount', K.N(w.amount)], ['Bank', `${w.bank_name} ${K.mask(w.bank_account)}`], ['Requested', K.when(w.created_at)], ['Reason', reason || 'Not given'], ['Wallet balance now', K.N(await walletBalance(u.id))]] }],
+    next: ['Check that your bank details on your profile are correct. Changing them needs an SMS code.', 'Then request the withdrawal again from your wallet.'],
+    cta: { label: 'Open my wallet', url: K.link('me-wallet') } });
   await activity.log(actor, ok ? 'wallet.withdrawal_paid' : 'wallet.withdrawal_rejected', { type: 'withdrawal', id }, { ref: w.ref });
   return db('withdrawals').where({ id }).first();
 }
@@ -108,7 +131,13 @@ async function requestRedemption(user, holdingId) {
   if (!(await db('holdings').where({ id: h.id, status: 'active' }).update({ status: 'redeem' }))) throw bad('A redemption has already been requested for these units.');
   await db('redemptions').insert({ id, holding_id: h.id, user_id: user.id, amount: Number(h.amount), settle_after: settleAfter, status: 'requested' });
   await activity.log({ type: 'user', id: user.id }, 'units.redemption_requested', { type: 'holding', id: h.id }, { ref: h.ref });
-  await sendEmail({ to: user.email, name: user.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Redemption requested for ${h.ref}`, paragraphs: [`Your request to redeem ${h.units} unit${h.units > 1 ? 's' : ''} (${h.ref}) is recorded. After 90 days' notice it settles at the close of the next cycle, on or after ${settleAfter.toDateString()}.`, 'Your units keep earning payouts until then.'] });
+  await sendEmail({ to: user.email, name: user.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Redemption requested for ${h.ref}`,
+    title: 'Your redemption request is recorded', lead: `Your request to redeem **${K.units(h.units)}** (${h.ref}) is recorded. Your units **keep earning** during the 90-day notice period.`,
+    hero: { label: 'Capital to be returned', value: K.N(h.amount), sub: `Settles on or after ${K.day(settleAfter)}`, tone: 'info' },
+    blocks: [K.payoutSteps(0, { requested: K.short(), processing: '90-day notice', paid: 'From ' + K.short(settleAfter) }),
+      { type: 'kv', title: 'Redemption details', rows: [['Stake reference', h.ref], ['Certificate', h.cert_no || ''], ['FOODCORE Mart', (await db('packages').where({ id: h.package_id }).first() || {}).name || ''], ['Units', K.units(h.units)], ['Unit capital', K.N(h.amount)], ['Requested', K.when()], ['Earliest settlement', K.day(settleAfter)]] }],
+    next: ['Payouts continue for these units until the redemption settles.', 'At settlement your unit capital is paid into your Tafiki wallet, with a settlement statement.', 'Changed your mind? You can cancel the request from **My Investments** before it settles.'],
+    cta: { label: 'View my investments', url: K.link('me-invest') } });
   return db('redemptions').where({ id }).first();
 }
 async function cancelRedemption(user, holdingId) {
@@ -130,7 +159,13 @@ async function settleRedemption(id, actor) {
   });
   const u = await db('users').where({ id: r.user_id }).first();
   const rp = await db('packages').where({ id: h.package_id }).first();
-  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'payouts', ref: h.ref, subject: `Redemption of ${h.ref} settled: ${N(r.amount)}`, paragraphs: [`Your redemption is settled and your unit capital has been paid into your Tafiki wallet. You can withdraw it to your bank.`], receipt: { title: 'Redemption settlement', amount: Number(r.amount), direction: 'out', rows: [['Paid to', `${u.name}${u.coop_no ? ' · ' + u.coop_no : ''}`], ['FOODCORE Mart', rp ? rp.name : ''], ['Stake reference', h.ref], ['Units redeemed', String(h.units)], ['Requested', new Date(r.created_at || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })], ['Paid into', 'Tafiki wallet'], ['Wallet balance now', N(await walletBalance(u.id))]], total: ['Capital returned', N(r.amount)] } });
+  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'payouts', ref: h.ref, subject: `Redemption of ${h.ref} settled: ${N(r.amount)}`,
+    title: 'Your redemption is settled', lead: `Your redemption of **${h.ref}** is settled and your unit capital has been paid into your Tafiki wallet.`,
+    hero: { label: 'Capital returned', value: K.N(r.amount), sub: `${K.units(h.units)} · ${rp ? rp.name : 'FOODCORE'}`, tone: 'out' },
+    blocks: [K.payoutSteps(2, { requested: K.short(r.created_at), processing: 'Notice served', paid: K.short() })],
+    receipt: { title: 'Redemption settlement', amount: Number(r.amount), direction: 'out', rows: [['Paid to', `${u.name}${u.coop_no ? ' · ' + u.coop_no : ''}`], ['FOODCORE Mart', rp ? rp.name : ''], ['Stake reference', h.ref], ['Certificate', h.cert_no || ''], ['Units redeemed', String(h.units)], ['Requested', K.day(r.created_at)], ['Settled', K.day()], ['Paid into', 'Tafiki wallet'], ['Wallet balance now', K.N(await walletBalance(u.id))]], total: ['Capital returned', K.N(r.amount)] },
+    next: ['Withdraw the money to your bank from your wallet whenever you are ready.', 'Your Certificate of Stake for these units is now closed.'],
+    cta: { label: 'Open my wallet', url: K.link('me-wallet') } });
   await activity.log(actor, 'units.redemption_settled', { type: 'holding', id: h.id }, { amount: r.amount });
   return db('redemptions').where({ id }).first();
 }

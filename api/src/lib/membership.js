@@ -9,6 +9,7 @@ const { uuid, now, HttpError } = require('./util');
 const { getTerms } = require('./terms');
 const activity = require('./activity');
 const { sendEmail } = require('./mailer');
+const K = require('./emailkit');
 const fmtN = (n) => '₦' + Math.round(Number(n)).toLocaleString('en-NG');
 const IN_PROGRESS_MIN = 60; // an unfinished Paystack checkout older than this counts as abandoned (same rule as reservation expiry)
 
@@ -50,7 +51,12 @@ async function recordFeePaid(payment, actor) {
   if (res.dup) {
     await activity.log(actor, 'membership.fee_refund_due', { type: 'payment', id: payment.id }, { fee });
     const admins = await db('admins').where({ status: 'active' }).whereIn('role', ['Super Admin', 'Finance Officer']);
-    for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: payment.reference, subject: `Refund ${fmtN(fee)} membership fee paid twice by ${res.u.name}`, paragraphs: [`Payment ${payment.reference} included the yearly membership fee, but ${res.u.name}'s membership was already paid for this year.`, `Refund ${fmtN(fee)} to the member. The stake itself is unaffected.`] });
+    for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: payment.reference, subject: `Refund ${fmtN(fee)} membership fee paid twice by ${res.u.name}`,
+      title: 'A membership fee was paid twice', lead: `Payment **${payment.reference}** included the yearly membership fee, but **${res.u.name}**'s membership was already paid for this year.`,
+      hero: { label: 'Refund due to the member', value: K.N(fee), sub: 'The stake itself is unaffected', tone: 'warn' },
+      blocks: [{ type: 'kv', title: 'Payment', rows: [['Member', res.u.name + (res.u.coop_no ? ' · ' + res.u.coop_no : '')], ['Email', res.u.email], ['Payment reference', payment.reference], ['Amount paid', K.N(payment.amount)], ['Membership paid until', res.u.membership_until ? K.day(res.u.membership_until) : '']] }],
+      next: [`Refund ${K.N(fee)} to the member.`, 'Record the refund in the console so the payment shows as settled.'],
+      cta: { label: 'Open the Tafiki Console', url: K.consoleLink() }, help: 'This is an automatic alert for Super Admins and Finance Officers.' });
   } else await activity.log(actor, 'membership.fee_paid', { type: 'user', id: res.u.id }, { fee, until: res.end, payment: payment.reference });
 }
 

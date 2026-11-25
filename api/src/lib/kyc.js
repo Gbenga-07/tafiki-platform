@@ -5,6 +5,7 @@ const config = require('../config');
 const { getDb } = require('../db');
 const { uuid, now } = require('./util');
 const { sendEmail } = require('./mailer');
+const K = require('./emailkit');
 const activity = require('./activity');
 let tokenImpl = null; // tests can replace
 const setTokenImpl = (f) => { tokenImpl = f; };
@@ -33,10 +34,18 @@ async function handleResult(body) {
     await db('users').where({ id: u.id }).update({ kyc_status: 'verified', updated_at: new Date() });
     await activity.log({ type: 'system' }, 'kyc.verified', { type: 'user', id: u.id }, { provider: 'Smile ID', code });
     await require('./units').onKycVerified(u.id, { type: 'system' });
-    await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'account', ref: u.id, subject: 'Your identity is verified', paragraphs: ['Smile ID has confirmed your identity. You can now take part in every member offer, and any units you have paid for are now confirmed.'] });
+    await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'account', ref: u.id, subject: 'Your identity is verified', title: 'Your identity is verified',
+      lead: 'Smile ID has **confirmed your identity**. You can now take part in every member offer, and any units you have already paid for are now confirmed.',
+      blocks: [{ type: 'kv', title: 'Identity check', rows: [['Name', u.name], ['Membership number', u.coop_no || ''], ['Checked by', 'Smile ID'], ['Result', 'Verified'], ['Verified on', K.when()]] }],
+      next: ['Your Certificate of Stake follows by email for any units you have paid for.', 'You can now withdraw from your wallet to your bank account.', 'Buy units in any open FOODCORE Mart from your dashboard.'],
+      cta: { label: 'Go to my dashboard', url: K.link('login') } });
   } else if (!ok) {
     await activity.log({ type: 'system' }, 'kyc.review', { type: 'user', id: u.id }, { provider: 'Smile ID', code, text: body.ResultText });
-    await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'account', ref: u.id, subject: 'We are reviewing your identity check', paragraphs: ['Smile ID could not confirm every detail automatically, so our team is reviewing your check. This usually takes one working day. We will email you when it is done.'] });
+    await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'account', ref: u.id, subject: 'We are reviewing your identity check', title: 'Your identity check is being reviewed',
+      lead: 'Smile ID could not confirm every detail automatically, so our team is **reviewing your check** by hand. This usually takes one working day.',
+      blocks: [{ type: 'kv', title: 'Identity check', rows: [['Name', u.name], ['Checked by', 'Smile ID'], ['Result', 'Manual review'], ['Submitted', K.when()]] },
+        { type: 'note', tone: 'info', text: 'Common reasons: a name spelt differently on your ID, a blurred photo, or poor lighting in the selfie. You do not need to do anything yet.' }],
+      next: ['Our team checks your details against your ID.', 'We email you as soon as it is done, with next steps if anything is needed.'] });
   }
   return db('kyc_checks').where({ id: chk.id }).first();
 }

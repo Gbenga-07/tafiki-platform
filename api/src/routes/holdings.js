@@ -12,6 +12,7 @@ const membership = require('../lib/membership');
 const paystack = require('../lib/paystack');
 const activity = require('../lib/activity');
 const { sendEmail } = require('../lib/mailer');
+const K = require('../lib/emailkit');
 const r = express.Router();
 r.use(requireUser);
 const shapeH = (h, p) => ({ id: h.id, ref: h.ref, package: p ? { id: p.id, name: p.name, stage: p.stage } : h.package_id, units: h.units, amount: Number(h.amount), status: h.status, method: h.method, reservedUntil: h.reserved_until, signedName: h.signed_name, signedAt: h.signed_at, paidAt: h.paid_at, certificate: h.cert_no ? { number: h.cert_no, issuedAt: h.issued_at, verificationCode: null } : null, activeSince: h.active_since, createdAt: h.created_at });
@@ -108,7 +109,11 @@ r.post('/:id/transfer-sent', async (req, res) => {
   await db('payments').where({ id: p.id }).update({ status: 'pending_review' });
   await db('holdings').where({ id: h.id }).update({ status: 'confirming', reserved_until: null });
   await activity.log({ type: 'user', id: req.user.id }, 'units.transfer_reported', { type: 'holding', id: h.id }, { reference: p.reference });
-  await sendEmail({ to: req.user.email, name: req.user.name.split(' ')[0], category: 'units', ref: h.ref, subject: `We are confirming your transfer for ${h.ref}`, paragraphs: [`Thank you. We will match your transfer of ₦${Number(p.amount).toLocaleString('en-NG')} (reference ${p.reference}) in the escrow account, usually within one working day.`, ...(Number(p.fee_amount) ? [`This includes your yearly cooperative membership fee of ₦${Number(p.fee_amount).toLocaleString('en-NG')}. The fee is non-refundable and earns no returns; returns are paid on your units only.`] : [])] });
+  await sendEmail({ to: req.user.email, name: req.user.name.split(' ')[0], category: 'units', ref: h.ref, subject: `We are confirming your transfer for ${h.ref}`, title: 'We are confirming your transfer',
+    lead: `Thank you. We will match your transfer of **${K.N(p.amount)}** in the escrow account, usually within one working day.`,
+    blocks: [{ type: 'kv', title: 'Transfer details', rows: [['Stake reference', h.ref], ['Units', K.units(h.units)], ['Amount', K.N(p.amount)], ['Includes membership fee', Number(p.fee_amount) ? K.N(p.fee_amount) + ' · non-refundable, earns no returns' : ''], ['Payment reference', p.reference], ['Reported', K.when()]] },
+      K.stakeSteps(1, { bought: K.short(h.created_at), paid: 'Being matched' })],
+    next: ['Finance matches the transfer in the escrow account.', 'You get a numbered **payment receipt** as soon as it is confirmed.'] });
   res.json({ ok: true });
 });
 

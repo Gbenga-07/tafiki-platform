@@ -9,6 +9,7 @@ const units = require('../lib/units');
 const { shape } = require('./packages');
 const activity = require('../lib/activity');
 const { sendEmail } = require('../lib/mailer');
+const K = require('../lib/emailkit');
 const r = express.Router();
 r.use(requireAdmin);
 const me = (req) => ({ type: 'admin', id: req.admin.id });
@@ -71,7 +72,10 @@ r.post('/payments/:id/reject', requirePerm('payments'), async (req, res) => {
   await db('payments').where({ id: pay.id }).update({ status: 'rejected', confirmed_by: req.admin.id });
   await db('holdings').where({ id: pay.holding_id }).update({ status: 'cancelled', cancel_reason: reason });
   const h = await db('holdings').where({ id: pay.holding_id }).first(); const u = await db('users').where({ id: h.user_id }).first();
-  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `We could not confirm the payment for ${h.ref}`, paragraphs: [`We could not confirm your payment (reference ${pay.reference}): ${reason}.`, 'If you have sent the money, reply with your proof of transfer and we will check again.'] });
+  await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `We could not confirm the payment for ${h.ref}`, title: 'We could not confirm your payment',
+    lead: `We could not find your payment for **${h.ref}** in the escrow account, so the purchase has been cancelled.`,
+    blocks: [{ type: 'kv', title: 'Payment', rows: [['Stake reference', h.ref], ['Units', K.units(h.units)], ['Amount', K.N(pay.amount)], ['Payment reference', pay.reference], ['Reason', reason], ['Checked', K.when()]] },
+      { type: 'note', tone: 'warn', title: 'Did you send the money?', text: 'Reply to this email with your **proof of transfer** (bank receipt or slip). We will check again and either confirm your units or refund you in full.' }] });
   await activity.log(me(req), 'payment.rejected', { type: 'payment', id: pay.id }, { reason });
   res.json({ ok: true });
 });

@@ -10,6 +10,7 @@ const { startSession, endSession, requireUser, revokeAll } = require('../lib/aut
 const lockout = require('../lib/lockout');
 const codes = require('../lib/codes');
 const { sendEmail } = require('../lib/mailer');
+const K = require('../lib/emailkit');
 const activity = require('../lib/activity');
 const present = require('../lib/present');
 const r = express.Router();
@@ -51,7 +52,10 @@ r.post('/register', async (req, res) => {
     coop_no: coopNo, coop_agreed_at: new Date(), terms_version: d.termsVersion || config.termsVersion });
   await activity.log({ type: 'user', id }, 'member.registered', { type: 'user', id }, { role: d.role, coopNo });
   const { value } = await codes.issue('email_verify', 'user', id, { minutes: 30 });
-  await sendEmail({ to: email, name: d.firstName, category: 'account', subject: 'Confirm your email for Tafiki', ref: id, paragraphs: [`Welcome to Tafiki. Your FOODCORE Multipurpose Cooperative membership number is ${coopNo}.`, `Your email confirmation code is ${value}. It expires in 30 minutes.`, 'Your identity check comes next, then you can take part in member offers.'] });
+  await sendEmail({ to: email, name: d.firstName, category: 'account', subject: 'Confirm your email for Tafiki', ref: id, title: 'Confirm your email',
+    lead: `Welcome to Tafiki. Your email confirmation code is ${value}. Enter it on the sign-up page to confirm this address.`,
+    blocks: [{ type: 'code', title: 'Email confirmation code', code: value, sub: 'Expires in 30 minutes' }, coopNo ? { type: 'kv', title: 'Your membership', rows: [['FOODCORE membership number', coopNo]] } : null],
+    next: ['Enter the code to confirm your email.', 'Confirm your phone number with the SMS code.', 'Complete your identity check, then you can take part in member offers.'], help: 'If you did not sign up for Tafiki, you can ignore this email.' });
   try { await require('../lib/accounts').welcome(await db('users').where({ id }).first()); } catch (e) { console.error(e); }
   try { await require('../lib/otp').send(await db('users').where({ id }).first(), 'phone_verify'); } catch (e) { /* an invalid number can be fixed later from the dashboard */ }
   await startSession(res, req, 'user', id, config.memberSessionHours * 60);
@@ -69,7 +73,8 @@ r.post('/verify-email', requireUser, async (req, res) => {
 });
 r.post('/verify-email/resend', requireUser, async (req, res) => {
   const { value } = await codes.issue('email_verify', 'user', req.user.id, { minutes: 30 });
-  await sendEmail({ to: req.user.email, name: req.user.name.split(' ')[0], category: 'account', subject: 'Your Tafiki confirmation code', ref: req.user.id, paragraphs: [`Your email confirmation code is ${value}. It expires in 30 minutes.`] });
+  await sendEmail({ to: req.user.email, name: req.user.name.split(' ')[0], category: 'account', subject: 'Your Tafiki confirmation code', ref: req.user.id, title: 'Your new confirmation code',
+    lead: `Your email confirmation code is ${value}.`, blocks: [{ type: 'code', title: 'Email confirmation code', code: value, sub: 'Expires in 30 minutes · earlier codes no longer work' }], help: false });
   res.json({ ok: true });
 });
 
@@ -97,7 +102,10 @@ r.post('/password/forgot', async (req, res) => {
   const u = email && (await getDb()('users').where({ email }).first());
   if (u && u.status === 'active') {
     const { value } = await codes.issue('password_reset', 'user', u.id, { minutes: 30, token: true });
-    await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'security', subject: 'Reset your Tafiki password', ref: u.id, paragraphs: ['We received a request to reset your password.', `Use this link within 30 minutes: ${config.appUrl}/#reset?token=${value}`, 'If you did not ask for this, you can ignore this email.'] });
+    await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'security', subject: 'Reset your Tafiki password', ref: u.id, title: 'Reset your password',
+      lead: 'We received a request to reset your password. Use the button below within **30 minutes** to choose a new one.',
+      cta: { label: 'Reset my password', url: `${config.appUrl}/#reset?token=${value}` },
+      blocks: [{ type: 'kv', title: 'Request', rows: [['Account', u.email], ['Requested', K.when()]] }, { type: 'note', tone: 'info', text: 'If you did not ask for this, you can ignore this email. Your password stays the same.' }], help: false });
   }
   res.json({ ok: true }); // same answer either way, so emails cannot be discovered
 });
