@@ -115,7 +115,7 @@ test('5. payments by stage: each member pays the ₦50,000 fee once, on their fi
     const round = Object.values(queue).map((q) => q.shift()).filter(Boolean);
     if (first) { // both at once from the same member: one wins, the other is told to finish the first
       const m = round[0].mem, other = Object.values(queue).find((q) => q.length && q[0].mem === m);
-      if (other) { const two = await all([m.a.post('/api/holdings/' + round[0].id + '/pay').send({ method: 'transfer' }), m.a.post('/api/holdings/' + other[0].id + '/pay').send({ method: 'transfer' })]); assert.ok(two.some((r) => r.status === 409) || two.every((r) => r.status === 200), two.map((r) => r.status).join()); for (const [i, r] of two.entries()) if (r.status === 200) await m.a.post('/api/holdings/' + (i ? other[0].id : round[0].id) + '/transfer-sent'); if (two[1].status === 200) other.shift(); round.shift(); }
+      if (other) { const two = await all([m.a.post('/api/holdings/' + round[0].id + '/pay').send({ method: 'transfer' }), m.a.post('/api/holdings/' + other[0].id + '/pay').send({ method: 'transfer' })]); assert.ok(two.some((r) => r.status === 409) || two.every((r) => r.status === 200), two.map((r) => r.status).join()); const pair = [round[0], other[0]]; for (const [i, r] of two.entries()) if (r.status === 200) await m.a.post('/api/holdings/' + pair[i].id + '/transfer-sent'); round.shift(); other.shift(); for (const [i, r] of two.entries()) if (r.status !== 200) other.push(pair[i]); }
       first = false;
     }
     await all(round.map(pay));
