@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="tafiki-api" content="">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script>/* Console lives at /control on the live site (old /#console links still work) */(function(){try{var m=document.querySelector('meta[name="tafiki-api"]');if(!m||!m.content)return;var p=location.pathname.replace(/\/+$/,''),h=location.hash;if(p==='/control'){if(p!==location.pathname)location.replace('/control'+(h||'#console'));else if(!h||h==='#')location.replace('#console');}else if(h==='#console')location.replace('/control#console');}catch(e){}})();</script>
 <title>Tafiki Investor Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2139,6 +2138,12 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
  .em-fl2{flex-direction:column}.em-fl2 .fx-sel{width:100%}
  .em-r2{grid-template-columns:34px minmax(0,1fr);gap:10px;padding:12px}.em-r2 .em-tm{grid-column:2;font-size:11px;color:#7A8770}
 }
+@media(max-width:600px){/* phone fit: nothing wider than the screen */
+.u-buy{flex-wrap:wrap;row-gap:6px}.u-buy>*{min-width:0}
+.fx-tabsw{width:auto;max-width:100%;flex-wrap:wrap;row-gap:4px}.fx-tabsw a{padding:8px 12px;font-size:14px}
+.ad-card .h{flex-wrap:wrap;row-gap:6px}.ad-card .h>*{min-width:0}
+.au-list{grid-template-columns:minmax(0,1fr)!important}.au-card,.dl-card{min-width:0;max-width:100%}
+.au-card *,.dl-card *{min-width:0;overflow-wrap:anywhere}.au-h,.dl-card>div{flex-wrap:wrap;row-gap:6px}.dl-route b{white-space:normal;overflow-wrap:anywhere}.dl-route .fl{white-space:normal!important}}
 </style>
 </head>
 <body>
@@ -2303,8 +2308,17 @@ function slotGrid(s,mineId){
 const legend=(mine)=>`<div class="legend">${mine?'<span><i class="mine"></i>Yours</span>':''}<span><i></i>Taken</span><span><i class="pend"></i>Awaiting payment</span><span><i class="free"></i>Open</span></div>`;
 
 /* ============================== ROUTER ============================== */
-const route=()=>location.hash.slice(1)||'home';
-function go(r){if(location.hash.slice(1)===r)render();else location.hash=r;}
+/* Clean addresses on the live site: tafiki.com for the website and portals, tafiki.com/console for the console.
+   Pages still move by #hash inside the app; the address bar is tidied straight after, and Back/Forward keep working. */
+const CLEAN=(()=>{const m=document.querySelector('meta[name="tafiki-api"]');return !!(m&&m.content);})();
+window.__R='';
+const cleanPath=r=>/^(admin|console)/.test(r)?'/console':'/';
+function cleanUrl(){if(!CLEAN)return;const h=location.hash.slice(1);if(h)window.__R=h;try{history.replaceState({r:window.__R||'home'},'',cleanPath(window.__R||'home'));}catch(e){}}
+if(CLEAN){const h=location.hash.slice(1),p=location.pathname.replace(/\/+$/,'');window.__R=h||(history.state&&history.state.r)||(p==='/console'||p==='/control'?'admin':'home');cleanUrl();
+ window.addEventListener('hashchange',cleanUrl);
+ window.addEventListener('popstate',e=>{if(e.state&&e.state.r){window.__R=e.state.r;window.dispatchEvent(new HashChangeEvent('hashchange'));}});}
+const route=()=>(CLEAN?(location.hash.slice(1)||window.__R):location.hash.slice(1))||'home';
+function go(r){if(route()===r)render();else location.hash=r;}
 window.addEventListener('hashchange',()=>{if(window.navTrack)navTrack();document.getElementById('modal').innerHTML='';render();window.scrollTo(0,0);});
 
 function protoBar(){
@@ -3011,7 +3025,7 @@ const A={
  viewCert:d=>{const h=S.holdings.find(x=>x.id===d.id);openModal(`${mh('Certificate of Stake',h.certNo)}<div class="modal-b">${certPreview(h)}</div><div class="modal-f"><span></span><button class="btn gold" data-a="cert" data-id="${h.id}">Download PDF</button></div>`);},
  closeTo:d=>{closeModal();go(d.r);},
  resumePay:d=>{const h=S.holdings.find(x=>x.id===d.id);FLOW={storeId:h.storeId,step:4,slots:h.slots,holdId:h.id,method:'card'};investModal();},
- cancelRes:d=>{const h=S.holdings.find(x=>x.id===d.id);openModal(`${mh('Release '+h.ref+'?')}<div class="modal-b"><p>This frees ${h.slots} unit${h.slots>1?'s':''} in ${esc(store(h.storeId).name)} for other investors. No money has been received for this purchase.</p></div><div class="modal-f"><button class="btn ghost" data-a="close">Keep it</button><button class="btn danger" data-a="cancelYes" data-id="${h.id}">Release units</button></div>`);},
+ cancelRes:d=>{const h=S.holdings.find(x=>x.id===d.id);openModal(`${mh('Release '+h.ref+'?')}<div class="modal-b"><p>This frees ${h.slots} unit${h.slots>1?'s':''} in ${esc(store(h.storeId).name)} for other members. No payment has been confirmed for this purchase, and the member will be emailed.</p></div><div class="modal-f"><button class="btn ghost" data-a="close">Keep it</button><button class="btn danger" data-a="cancelYes" data-id="${h.id}">Release units</button></div>`);},
  cancelYes:d=>{const h=S.holdings.find(x=>x.id===d.id);h.status='cancelled';logA(h.ref+' released · '+h.slots+' units back on offer');closeModal();commit('Purchase cancelled.');},
  viewDoc:d=>{const h=S.holdings.find(x=>x.id===d.id);openModal(`${mh('Unit Subscription and Security Agreement',h.ref)}<div class="modal-b">${agreementText(h)}</div>`,true);},
  statement:d=>{const t=S.tx.find(x=>x.id===d.id),u=user(t.userId);const p=S.payouts.find(p=>t.memo.includes('cycle '+p.cycle)&&t.memo.includes(store(p.storeId).name));const s=p&&store(p.storeId);
@@ -4304,14 +4318,15 @@ function stakeList(hs){if(!hs.length)return '<div class="stk-m">'+fxEmpty('No st
   return `<li><a class="stk-r" href="#admin-inv-${u.id}">
    <div class="stk-a"><span class="stk-n">${esc(u.name)}</span><span class="stk-v num">${N(h.slots*S.st.slotPrice)}</span></div>
    <div class="stk-b"><span>${h.ref} · ${esc(st.name.replace('FOODCORE ',''))} · ${h.slots} unit${h.slots>1?'s':''}</span><span class="stk-s ${tone[h.status]||''}"><i></i>${HFX[h.status][1]}</span></div></a>
-   <div class="stk-f"><span>${esc(pay)}</span>${h.certNo?`<button class="stk-c" data-a="cert" data-id="${h.id}">Certificate ${h.certNo.replace(/^FC-C-/,'')}</button>`:h.status==='unpaid'?`<button class="stk-c bad" data-a="cancelRes" data-id="${h.id}">Cancel unpaid purchase</button>`:''}</div></li>`;}).join('')}</ul>`;}
+   <div class="stk-f"><span>${esc(pay)}</span>${h.certNo?`<button class="stk-c" data-a="cert" data-id="${h.id}">Certificate ${h.certNo.replace(/^FC-C-/,'')}</button>`:relBtn(h,'stk-c bad')}</div></li>`;}).join('')}</ul>`;}
+function relBtn(h,cls){const L=window.LV;if(L&&L.relH){if(h._pv||!['unpaid','confirming'].includes(h.status))return '';const left=Math.ceil(((h._since||Date.now())+L.relH*3600e3-Date.now())/3600e3);return left>0?(h.status==='confirming'?`<button class="fx-btn light sm" disabled title="An unconfirmed payment can be released ${L.relH} hours after it started">Release in ${left}h</button>`:''):`<button class="${cls||'fx-btn bad sm'}" data-a="cancelRes" data-id="${h.id}">Release Units</button>`;}return h.status==='unpaid'?`<button class="${cls||'fx-btn bad sm'}" data-a="cancelRes" data-id="${h.id}">Release</button>`:'';}
 function faSlots(){const f=window.SLOTF||'all',conf=S.holdings.filter(h=>h.status==='confirming'),unpaid=S.holdings.filter(h=>h.status==='unpaid');
  const hs=S.holdings.filter(h=>h.status!=='cancelled'&&(f==='all'||h.storeId===f)).slice().sort((a,b)=>({confirming:0,unpaid:1}[a.status]??2)-({confirming:0,unpaid:1}[b.status]??2)||b.ref.localeCompare(a.ref));
  const issued=S.holdings.filter(h=>['reserved','active','redeem'].includes(h.status));
  return `<div class="fx-panel ad">${adHead('Members','Units And Payments','Match each transfer in the escrow account to its reference, then confirm it. Units and the Certificate of Stake are issued on confirmation.')}
  ${adKpis([['Payments To Confirm',conf.length,N(conf.reduce((a,h)=>a+h.slots*S.st.slotPrice+feeOf(h),0))],['Awaiting Payment',unpaid.length,unpaid.reduce((a,h)=>a+h.slots,0)+' units in checkout'],['Units Issued',issued.reduce((a,h)=>a+h.slots,0),issued.length+' stakes'],['Capital Confirmed',N(issued.reduce((a,h)=>a+h.slots*S.st.slotPrice,0)),'in escrow or stock'],['Membership Fees',N(issued.reduce((a,h)=>a+(+h.fee||0),0)),'yearly fees · earn no returns']])}
- ${conf.length?fxSec('Payments To Confirm',`<span class="ad-sub">${conf.length} waiting</span>`,adTable(['Reference','Investor','Package','Units','Amount','Actions'],conf.map(h=>{const u=user(h.userId);return `<tr><td class="l"><b>${h.ref}</b><br><small>${methodLabel(h)}${h.gatewayVerified?' · Paystack verified':''}</small></td><td>${adPerson(u,u.kyc==='verified'?'ID verified':'ID in review','admin-inv-'+u.id)}</td><td>${esc(store(h.storeId).name.replace('FOODCORE ',''))}</td><td>${h.slots}</td><td>${N(h.slots*S.st.slotPrice+feeOf(h))}${feeOf(h)?`<br><small>incl. ${N(feeOf(h))} membership fee</small>`:''}</td><td><div class="ad-row"><button class="fx-btn sm" data-a="confirmPay" data-id="${h.id}" ${u.kyc!=='verified'?'disabled title="Verify ID first"':''}>${h.gatewayVerified?'Issue Units':'Funds Received'}</button><button class="fx-btn bad sm" data-a="rejectPay" data-id="${h.id}">Not Received</button></div></td></tr>`;}))):''}
- ${fxSec('All Stakes',`<select class="fx-sel" data-ch="slotf" aria-label="Filter by package"><option value="all">All packages</option>${S.stores.map(x=>`<option value="${x.id}" ${f===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select>`,'<div class="stk-d">'+adTable(['Stake','Investor','Package','Units','Capital','Status','Paid By','Certificate'],hs.slice(0,window.SLOTALL||f!=='all'?hs.length:20).map(h=>{const u=user(h.userId);return `<tr><td class="l"><b>${h.ref}</b></td><td><a class="ad-link" href="#admin-inv-${u.id}">${esc(u.name)}</a></td><td>${esc(store(h.storeId).name.replace('FOODCORE ',''))}</td><td>${h.slots}</td><td>${N(h.slots*S.st.slotPrice)}</td><td>${stakeChip(h)}</td><td>${h.paidAt?methodLabel(h):'—'}</td><td>${h.certNo?`<button class="ad-mini" data-a="cert" data-id="${h.id}">${h.certNo}</button>`:h.status==='unpaid'?`<button class="fx-btn bad sm" data-a="cancelRes" data-id="${h.id}">Release</button>`:'—'}</td></tr>`;}))+'</div>'+stakeList(hs.slice(0,window.SLOTALL||f!=='all'?hs.length:20))+(!window.SLOTALL&&f==='all'&&hs.length>20?`<button class="fx-btn light ad-more" data-a="slotAll">Show All ${hs.length} Stakes</button>`:''))}</div>`;}
+ ${conf.length?fxSec('Payments To Confirm',`<span class="ad-sub">${conf.length} waiting</span>`,adTable(['Reference','Investor','Package','Units','Amount','Actions'],conf.map(h=>{const u=user(h.userId);return `<tr><td class="l"><b>${h.ref}</b><br><small>${methodLabel(h)}${h.gatewayVerified?' · Paystack verified':''}</small></td><td>${adPerson(u,u.kyc==='verified'?'ID verified':'ID in review','admin-inv-'+u.id)}</td><td>${esc(store(h.storeId).name.replace('FOODCORE ',''))}</td><td>${h.slots}</td><td>${N(h.slots*S.st.slotPrice+feeOf(h))}${feeOf(h)?`<br><small>incl. ${N(feeOf(h))} membership fee</small>`:''}</td><td><div class="ad-row"><button class="fx-btn sm" data-a="confirmPay" data-id="${h.id}" ${u.kyc!=='verified'?'disabled title="Verify ID first"':''}>${h.gatewayVerified?'Issue Units':'Funds Received'}</button><button class="fx-btn bad sm" data-a="rejectPay" data-id="${h.id}">Not Received</button>${relBtn(h)}</div></td></tr>`;}))):''}
+ ${fxSec('All Stakes',`<select class="fx-sel" data-ch="slotf" aria-label="Filter by package"><option value="all">All packages</option>${S.stores.map(x=>`<option value="${x.id}" ${f===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select>`,'<div class="stk-d">'+adTable(['Stake','Investor','Package','Units','Capital','Status','Paid By','Certificate'],hs.slice(0,window.SLOTALL||f!=='all'?hs.length:20).map(h=>{const u=user(h.userId);return `<tr><td class="l"><b>${h.ref}</b></td><td><a class="ad-link" href="#admin-inv-${u.id}">${esc(u.name)}</a></td><td>${esc(store(h.storeId).name.replace('FOODCORE ',''))}</td><td>${h.slots}</td><td>${N(h.slots*S.st.slotPrice)}</td><td>${stakeChip(h)}</td><td>${h.paidAt?methodLabel(h):'—'}</td><td>${h.certNo?`<button class="ad-mini" data-a="cert" data-id="${h.id}">${h.certNo}</button>`:relBtn(h)||'—'}</td></tr>`;}))+'</div>'+stakeList(hs.slice(0,window.SLOTALL||f!=='all'?hs.length:20))+(!window.SLOTALL&&f==='all'&&hs.length>20?`<button class="fx-btn light ad-more" data-a="slotAll">Show All ${hs.length} Stakes</button>`:''))}</div>`;}
 A.slotAll=()=>{window.SLOTALL=1;render();};
 function faPayouts(){const tr=S.stores.filter(x=>x.stage==='trading'),s=tr.find(x=>x.id===window.PAYS)||tr[0],paid=S.payouts.reduce((a,p)=>a+p.perSlot*p.slots,0);
  const next=tr.map(nextCycle).filter(Boolean).sort()[0];
@@ -4835,8 +4850,8 @@ function faShops(){const rs=S.users.filter(u=>u.role==='retailer'),pk=upack().it
 
 /* BACK GOES TO THE PAGE YOU CAME FROM */
 const NAVH=[];
-let NAVCUR=location.hash.slice(1)||'home';
-window.navTrack=()=>{const nx=location.hash.slice(1)||'home';if(window.__navBack){window.__navBack=false;}else if(nx!==NAVCUR){NAVH.push(NAVCUR);if(NAVH.length>40)NAVH.shift();}NAVCUR=nx;};
+let NAVCUR=route();
+window.navTrack=()=>{const nx=route();if(window.__navBack){window.__navBack=false;}else if(nx!==NAVCUR){NAVH.push(NAVCUR);if(NAVH.length>40)NAVH.shift();}NAVCUR=nx;};
 const PG_NAMES={'admin':'Dashboard','admin-analytics':'Analytics','admin-investors':'Investors','admin-slots':'Units And Payments','admin-payouts':'Payouts','admin-transactions':'Withdrawals','admin-requests':'Requests','admin-stores':'Investment Packages','admin-package':'Unit Package','admin-shops':'Marts','admin-audit':'Audit And Reconciliation','admin-remittance':'Remittance','admin-orders':'Deliveries','admin-stock':'Stock On Shelves','admin-emails':'Email Correspondence','admin-config':'Terms And Settings','admin-notifications':'Notifications'};
 function pgName(r){if(PG_NAMES[r])return PG_NAMES[r];const id=(p)=>r.slice(p.length);
  if(r.startsWith('admin-inv-')){const u=user(id('admin-inv-'));return u?u.name:'Investor';}
@@ -4845,7 +4860,7 @@ function pgName(r){if(PG_NAMES[r])return PG_NAMES[r];const id=(p)=>r.slice(p.len
  if(r.startsWith('admin-payouts-')){const s=store(id('admin-payouts-'));return s?s.name+' Payouts':'Payouts';}
  if(r.startsWith('admin-od-'))return 'Order Details';return null;}
 const _fxBack0=fxBack;
-fxBack=(r,t)=>{const prev=NAVH[NAVH.length-1],cur=location.hash.slice(1),useP=prev&&prev!==cur&&prev.split('-')[0]===cur.split('-')[0];
+fxBack=(r,t)=>{const prev=NAVH[NAVH.length-1],cur=route(),useP=prev&&prev!==cur&&prev.split('-')[0]===cur.split('-')[0];
  const label=useP?(pgName(prev)||t):t;return `<div style="display:flex;align-items:center;gap:8px"><a class="fx-back" href="#${useP?prev:r}" data-a="navBack" data-r="${useP?prev:r}" aria-label="Back to ${esc(label)}">${ic('back')}</a><span class="fx-crumb">${esc(label)}</span></div>`;};
 A.navBack=d=>{const prev=NAVH[NAVH.length-1];if(prev===d.r){NAVH.pop();window.__navBack=true;}location.hash=d.r;};
 function navCurPrev(){return NAVH[NAVH.length-1];}
@@ -5240,7 +5255,7 @@ A.conLogin=()=>{const c=admCfg(),em=(document.getElementById('con-email').value|
 A.conCode=()=>{const st=window.CON||{},v=(document.getElementById('con-code').value||'').trim();if(v!==st.code){admHist(st.email,false,'Wrong verification code');save();return toast('That code is not correct.');}admIn(admCfg().admins.find(x=>x.id===st.id));};
 function admIn(ad){const c=admCfg();ad.last=admNow();S.adminAuth={id:ad.id,at:admNow(),exp:admNow()+c.timeout*60000};admHist(ad.email,true,c.twofa?'Password and code':'Password');S.session={userId:'a1'};window.CON={};logA(ad.name+' signed in to the Tafiki Console');save();go(window.CON_NEXT||'admin');window.CON_NEXT=null;}
 A.conOut=()=>{const ad=admMe();if(ad)logA(ad.name+' signed out of the Tafiki Console');S.adminAuth=null;save();location.hash='#console';};
-const _adminShellG=adminShell;adminShell=function(r){if(!admAuthed()){window.CON_NEXT=r;setTimeout(()=>{if(location.hash!=='#console')location.replace('#console');},0);return consolePage();}
+const _adminShellG=adminShell;adminShell=function(r){if(!admAuthed()){window.CON_NEXT=r;setTimeout(()=>{if(route()!=='console')location.replace('#console');},0);return consolePage();}
  S.adminAuth.exp=admNow()+admCfg().timeout*60000;const ad=admMe();
  return _adminShellG(r).replace('<div class="ai-topr">',`<div class="ai-topr"><div class="adm-who"><span class="fx-av sm">${initials(ad.name)}</span><span><b>${esc(ad.name)}</b><small>${esc(ad.role)}</small></span><button data-a="conOut" title="Sign out">${ic('logout')}</button></div>`);};
 const _publicShellG=publicShell;publicShell=function(r){if(r==='console')return admAuthed()?(setTimeout(()=>location.replace('#admin'),0),''):consolePage();return _publicShellG(r);};
@@ -5485,7 +5500,7 @@ async function loadAdmin(){const q=s=>API(s).catch(()=>null);
  S.users=(us?us.users:[]).map(mapUser);S.users.push({id:'a1',name:LV.admin.name,email:LV.admin.email,role:'admin',kyc:'verified'});S.session={userId:'a1'};
  S.stores=(pk?pk.packages:[]).map(mapPkg);
  const payBy={};(pays?pays.payments:[]).forEach(p=>{if(['pending_review','initialized'].includes(p.status)&&!payBy[p.ref])payBy[p.ref]=p.id;});
- S.holdings=(hs?hs.holdings:[]).filter(h=>h.status!=='cancelled').map(h=>Object.assign(mapHold(h),{_payId:payBy[h.ref]}));
+ LV.relH=(hs&&hs.releaseAfterHours)||24;S.holdings=(hs?hs.holdings:[]).filter(h=>h.status!=='cancelled').map(h=>Object.assign(mapHold(h),{_payId:payBy[h.ref],_pv:!!h.payment_verified,_since:+new Date(h.last_payment_at||h.created_at)}));
  S.deliveries=(ds?ds.deliveries:[]).map(d=>mapDel(d));
  (st?st.stores:[]).forEach(x=>{const u=S.users.find(y=>y.id===x.id);if(u){applyAccount(u,x.account);}});
  const det=await Promise.all((st?st.stores:[]).map(x=>q('/api/admin/stores/'+x.id)));
@@ -5538,7 +5553,7 @@ A.liLogin=act(async()=>{const r=await API('/api/auth/login',{method:'POST',body:
 A.liForgot=()=>openModal(`${mh('Reset your password','We will email you a secure link.')}<div class="modal-b"><div class="field"><label for="fp-e">Email</label><input class="input" id="fp-e" type="email" value="${esc(val('li-e'))}"></div></div><div class="modal-f"><button class="btn ghost" data-a="close">Cancel</button><button class="btn dark" data-a="liForgotGo">Send link</button></div>`);
 A.liForgotGo=act(async()=>{await API('/api/auth/password/forgot',{method:'POST',body:{email:val('fp-e')}});},'If that email has an account, a reset link is on its way.');
 const resetPage=()=>`<section class="band" style="background:var(--cream)"><div class="wrap" style="max-width:460px"><div class="card stack" style="padding:28px;gap:14px"><h2 style="font-size:26px">Choose a new password</h2><div class="field"><label for="rp-1">New password</label><input class="input" id="rp-1" type="password" autocomplete="new-password"></div><div class="field"><label for="rp-2">Confirm new password</label><input class="input" id="rp-2" type="password" autocomplete="new-password"></div><button class="btn dark" data-a="rpGo">Save password</button></div></div></section>`;
-A.rpGo=act(async()=>{if(val('rp-1')!==val('rp-2'))throw new Error('The passwords do not match.');const t=(location.hash.split('token=')[1]||'').split('&')[0];await API('/api/auth/password/reset',{method:'POST',body:{token:t,password:val('rp-1')}});location.hash='#login';},'Password saved. You can log in now.');
+A.rpGo=act(async()=>{if(val('rp-1')!==val('rp-2'))throw new Error('The passwords do not match.');const t=(route().split('token=')[1]||'').split('&')[0];await API('/api/auth/password/reset',{method:'POST',body:{token:t,password:val('rp-1')}});location.hash='#login';},'Password saved. You can log in now.');
 A.logout=act(async()=>{await API('/api/auth/logout',{method:'POST'});LV.me=null;S.session=null;location.hash='#home';},'Signed out.');
 const _pLoginBase=pLogin;
 const _publicShellL=publicShell;publicShell=function(r){if(r.startsWith('reset')){LV.reset=true;const h=_publicShellL('login');LV.reset=false;return h;}if(r.startsWith('pay-result'))return _publicShellL('home');return _publicShellL(r);};
@@ -5570,7 +5585,7 @@ A.fsign=act(async()=>{const sig=val('f-sig');const r=await API('/api/holdings',{
 A.checkout=act(async d=>{const r=await API('/api/holdings/'+d.id+'/pay',{method:'POST',body:{method:FLOW.method==='debit'?'debit':FLOW.method==='any'?'any':'card'}});location.href=r.authorizationUrl;return false;});
 A.fpaid=act(async d=>{await API('/api/holdings/'+d.id+'/pay',{method:'POST',body:{method:'transfer'}});await API('/api/holdings/'+d.id+'/transfer-sent',{method:'POST'});},'Thanks. We will confirm your transfer and update your units.');
 A.resumePay=d=>{const h=S.holdings.find(x=>x.id===d.id);FLOW={storeId:h.storeId,step:4,slots:h.slots,holdId:h.id,method:'card'};investModal();};
-A.cancelYes=act(async d=>{await API('/api/holdings/'+d.id,{method:'DELETE'});},'Purchase cancelled.');
+A.cancelYes=act(async d=>{if(LV.admin)await API('/api/admin/holdings/'+d.id+'/release',{method:'POST'});else await API('/api/holdings/'+d.id,{method:'DELETE'});},()=>LV.admin?'Units released. The member has been emailed.':'Purchase cancelled.');
 A.redeem=act(async d=>{await API('/api/me/holdings/'+d.id+'/redeem',{method:'POST'});},'Redemption requested. It settles after 90 days’ notice.');
 A.wdGo=act(async()=>{const v=+val('wd');await API('/api/me/wallet/withdrawals',{method:'POST',body:{amount:v,code:val('wd-otp')}});},'Withdrawal requested. It is usually paid within two working days.');
  /* SMS codes (Termii): withdrawals and phone confirmation */
@@ -5595,7 +5610,7 @@ A.wdGo=act(async()=>{const v=+val('wd');await API('/api/me/wallet/withdrawals',{
   <iframe class="em-frame" sandbox="" title="Email as sent"></iframe><div class="acts">${['failed','logged'].includes(e.status)?`<button class="fx-btn light" data-a="emResend" data-id="${e.id}">Send again</button>`:''}<button class="fx-btn" data-a="close">Close</button></div></div>`,'fxm em-modal');
   const f=document.querySelector('.em-frame');if(f)f.srcdoc=e.body_html||('<pre>'+esc(e.body_text)+'</pre>');};
  A.emResend=act(async d=>{const r=await API('/api/admin/emails/'+d.id+'/resend',{method:'POST'});return r;},r=>r&&r.status==='sent'?'Email sent.':r&&r.status==='logged'?'Email is held: the server has no email provider set up yet (test mode).':'Sending failed again. Check the email provider settings.');
-async function payReturn(){const ref=(location.hash.split('ref=')[1]||'').split('&')[0];if(!ref)return;try{const r=await API('/api/holdings/payments/'+encodeURIComponent(decodeURIComponent(ref))+'/verify');await refresh();location.hash='#me-slots';toast(r.payment.status==='success'?'Payment received. Thank you.':r.payment.status==='failed'?'The payment did not go through. You can try again.':'We are confirming your payment.');}catch(e){toast(e.message);location.hash='#me';}}
+async function payReturn(){const ref=(route().split('ref=')[1]||'').split('&')[0];if(!ref)return;try{const r=await API('/api/holdings/payments/'+encodeURIComponent(decodeURIComponent(ref))+'/verify');await refresh();location.hash='#me-slots';toast(r.payment.status==='success'?'Payment received. Thank you.':r.payment.status==='failed'?'The payment did not go through. You can try again.':'We are confirming your payment.');}catch(e){toast(e.message);location.hash='#me';}}
 
 /* -------- FOODCORE Mart portal -------- */
 A.reportSale=act(async()=>{const v=+val('sale');if(!(v>0))throw new Error('Enter the value you sold.');await API('/api/store/sales',{method:'POST',body:{amount:Math.round(v)}});},'Sales submitted.');
