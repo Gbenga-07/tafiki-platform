@@ -52,6 +52,8 @@ r.post('/register', async (req, res) => {
   await activity.log({ type: 'user', id }, 'member.registered', { type: 'user', id }, { role: d.role, coopNo });
   const { value } = await codes.issue('email_verify', 'user', id, { minutes: 30 });
   await sendEmail({ to: email, name: d.firstName, category: 'account', subject: 'Confirm your email for Tafiki', ref: id, paragraphs: [`Welcome to Tafiki. Your FOODCORE Multipurpose Cooperative membership number is ${coopNo}.`, `Your email confirmation code is ${value}. It expires in 30 minutes.`, 'Your identity check comes next, then you can take part in member offers.'] });
+  try { await require('../lib/accounts').welcome(await db('users').where({ id }).first()); } catch (e) { console.error(e); }
+  try { await require('../lib/otp').send(await db('users').where({ id }).first(), 'phone_verify'); } catch (e) { /* an invalid number can be fixed later from the dashboard */ }
   await startSession(res, req, 'user', id, config.memberSessionHours * 60);
   const u = await db('users').where({ id }).first();
   res.status(201).json({ user: present.user(u) });
@@ -60,7 +62,9 @@ r.post('/register', async (req, res) => {
 r.post('/verify-email', requireUser, async (req, res) => {
   const out = await codes.check('email_verify', 'user', req.user.id, req.body && req.body.code);
   if (!out.ok) throw bad(out.reason === 'wrong' ? 'That code is not correct.' : 'That code has expired. Request a new one.');
+  const was = !!req.user.email_verified;
   await getDb()('users').where({ id: req.user.id }).update({ email_verified: true, updated_at: new Date() });
+  if (!was) await require('../lib/accounts').activated(req.user);
   res.json({ ok: true });
 });
 r.post('/verify-email/resend', requireUser, async (req, res) => {
@@ -78,8 +82,8 @@ r.post('/login', async (req, res) => {
   const u = await db('users').where({ email }).first();
   const ok = u && (await pw.verify(password, u.password_hash));
   if (!ok || u.status !== 'active') {
-    await lockout.fail(key); await lockout.event('user', email || '(blank)', false, !ok ? 'Wrong email or password' : 'Account suspended', req.ip);
-    throw new HttpError(401, u && ok ? 'This account is suspended. Contact support@tafiki.com.' : 'The email or password is not correct.');
+    await lockout.fail(key); await lockout.event('user', email || '(blank)', false, !ok ? 'Wrong email or password' : 'Account ' + u.status, req.ip);
+    throw new HttpError(401, u && ok ? (u.status === 'closed' ? 'This account is closed. Contact support@tafiki.com to reopen it.' : 'This account is suspended. Contact support@tafiki.com.') : 'The email or password is not correct.');
   }
   await lockout.clear(key); await lockout.event('user', email, true, 'Password', req.ip);
   await startSession(res, req, 'user', u.id, config.memberSessionHours * 60);

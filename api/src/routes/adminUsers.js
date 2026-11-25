@@ -70,10 +70,14 @@ r.post('/:id/temporary-password', requirePerm('members'), async (req, res) => {
   res.json({ temporaryPassword: temp });
 });
 r.post('/:id/status', requirePerm('members'), async (req, res) => {
-  const status = req.body && req.body.status; if (!['active', 'suspended'].includes(status)) throw bad('Status must be active or suspended.');
+  const status = req.body && req.body.status; const reason = req.body && req.body.reason ? String(req.body.reason).slice(0, 200) : null;
+  if (!['active', 'suspended', 'closed'].includes(status)) throw bad('Status must be active, suspended or closed.');
   const db = getDb(); const u = await db('users').where({ id: req.params.id }).first(); if (!u) throw new HttpError(404, 'Member not found.');
+  if (status === 'closed') { await require('../lib/accounts').close(u, me(req), reason); return res.json({ ok: true }); }
+  if (u.status === status) return res.json({ ok: true });
   await db('users').where({ id: u.id }).update({ status, updated_at: new Date() }); if (status === 'suspended') await revokeAll('user', u.id);
-  await activity.log(me(req), 'member.' + status, { type: 'user', id: u.id });
+  await activity.log(me(req), 'member.' + status, { type: 'user', id: u.id }, { reason });
+  await require('../lib/accounts').statusChanged(u, status, reason);
   res.json({ ok: true });
 });
 module.exports = r;

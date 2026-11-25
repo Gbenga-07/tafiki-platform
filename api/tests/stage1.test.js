@@ -18,7 +18,7 @@ test('register requires agreeing to terms and gives a cooperative number', async
   assert.equal(r.body.user.password_hash, undefined);
   const me = await a.get('/api/me'); assert.equal(me.body.user.email, 'ada@example.com');
   const dup = await agent(app).post('/api/auth/register').send(reg); assert.equal(dup.status, 409);
-  const e = await lastEmail('ada@example.com'); assert.match(e.subject, /Confirm your email/);
+  assert.ok(await db('emails').where({ to_email: 'ada@example.com' }).where('subject', 'like', 'Confirm your email%').first());
 });
 
 test('mutating requests need the client header', async () => {
