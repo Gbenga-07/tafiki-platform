@@ -2144,6 +2144,16 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
 .ad-card .h{flex-wrap:wrap;row-gap:6px}.ad-card .h>*{min-width:0}
 .au-list{grid-template-columns:minmax(0,1fr)!important}.au-card,.dl-card{min-width:0;max-width:100%}
 .au-card *,.dl-card *{min-width:0;overflow-wrap:anywhere}.au-h,.dl-card>div{flex-wrap:wrap;row-gap:6px}.dl-route b{white-space:normal;overflow-wrap:anywhere}.dl-route .fl{white-space:normal!important}}
+#an-tip{white-space:pre-line}
+.pf-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin:6px 0 10px}
+.pf-leg{display:flex;flex-wrap:wrap;gap:8px}.pf-chip{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid #E3EBD9;border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;color:#2B3A22;cursor:pointer}
+.pf-chip i{width:10px;height:10px;border-radius:50%;flex:none}.pf-chip b{font-size:12px;color:#5C6B52;font-weight:600}.pf-chip.off{opacity:.45;background:#F4F6F1}.pf-chip.off i{background:#BFC7B6!important}
+.pf-mode{display:flex;background:#F0F4EA;border-radius:999px;padding:3px}.pf-mode button{border:0;background:none;font:inherit;font-size:12.5px;padding:6px 12px;border-radius:999px;color:#5C6B52;cursor:pointer}.pf-mode button.on{background:#fff;color:#1D4107;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.pf-svg .pf-sel{stroke:#C9D6BC;stroke-width:1}.pf-svg .an-hit{cursor:pointer}
+.pf-det{margin-top:12px;border-top:1px solid #EEF2E8;padding-top:12px}.pf-dh{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}.pf-dh b{font-size:14px;color:#1D4107}.pf-dh span{font-size:12px;color:#7A8770}
+.pf-dg{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}.pf-dg>div{background:#F6FAF1;border:1px solid #E3EBD9;border-radius:12px;padding:9px 12px;min-width:0}
+.pf-dg span{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:#5C6B52}.pf-dg span i{width:8px;height:8px;border-radius:50%;flex:none}.pf-dg b{display:block;font-size:15px;color:#1D2A14;margin:3px 0 1px}.pf-dg small{font-size:11px;color:#7A8770}
+@media(max-width:600px){.pf-dg{grid-template-columns:1fr 1fr}.pf-chip{padding:5px 10px;font-size:12px}.pf-mode{width:100%}.pf-mode button{flex:1}}
 </style>
 </head>
 <body>
@@ -4696,7 +4706,7 @@ function faAnalytics(){const P=S.st.slotPrice,U=S.st.slotsPerStore,shops=S.users
  return `<div class="fx-panel ad">${adHead('Insights','Analytics','How capital, stock, sales and returns are moving across Tafiki. Hover any chart for exact figures, or open the table under it.')}
  ${adKpis([['Capital Raised',N(conf.reduce((a,h)=>a+h.slots*P,0)),conf.reduce((a,h)=>a+h.slots,0)+' of '+S.stores.length*U+' units'],['Investors',new Set(conf.map(h=>h.userId)).size,'with confirmed units'],['Stock Delivered',N(recv),'to FOODCORE Marts'],['Sell-Through',recv?Math.round(sales/recv*100)+'%':'—','audited sales ÷ stock received'],['Remittance Rate',sales?Math.round(remd/sales*100)+'%':'—','confirmed ÷ audited sales'],['Returns Paid',N(paid),N(owed)+' still to come']])}
  <div class="an-grid">
- ${anCard('Capital Raised','Confirmed unit capital over the last 10 months. Hover a month for details.',capChart(capPts),aTable(['Month','Capital raised'],capPts.map(p=>[p.l,N(p.v)])),true)}
+ ${(()=>{const pf=perfData(months);return anCard('Platform Performance','Capital, stock, sales, remittance and returns over the last 10 months. Tap a line name to show or hide it, and tap a month for its full figures.',perfChart(pf),aTable(['Month',...pf.series.map(x=>x.l)],pf.months.map((m,i)=>[m,...pf.series.map(x=>N(PF_().mode==='mon'?x.mon[i]:x.cum[i]))])),true);})()}
  ${anCard('Package Funding','Units confirmed of '+U+' per package',anHBars(pk,fmtU,U),aTable(['Package','Units confirmed','Status'],pk.map(r=>[esc(r.l),r.v,r.s])))}
  ${anCard('Units By Status','All '+mixT+' units bought or held',`<div class="an-mix">${statusMix.map(([l,v,c])=>`<i style="flex:${v||0.0001};background:${c}" ${tipAttr(l+' · '+v+' units')}></i>`).join('')}</div><div class="an-mixl">${statusMix.map(([l,v,c])=>`<div><span><i style="background:${c}"></i>${l}</span><b class="num">${v}</b><small>${Math.round(v/mixT*100)}%</small></div>`).join('')}</div>`,aTable(['Status','Units','Share'],statusMix.map(([l,v])=>[l,v,Math.round(v/mixT*100)+'%'])))}
  ${anCard('Mart Stock','Stock received, split into audited sales and stock on shelf',anHStack(st,['Audited sales','On shelf'],fmtN),aTable(['Mart','Audited sales','On shelf','Stock received'],st.map(r=>[esc(r.l),N(r.a),N(r.b),N(r.a+r.b)])),true)}
@@ -5346,7 +5356,7 @@ const _admCfgL=admCfg;admCfg=function(){const c=_admCfgL();if(!c.v2){c.admins.fo
 const admGroups=()=>{const a=admMe();return a?roleOf(a.role)[2]:[];};
 let admCan=act=>{const a=admMe();if(!a)return false;if(a.role==='Super Admin')return true;if(RO_OK.has(act))return true;const g=ACT_GROUP[act];return !!g&&admGroups().includes(g);};
 const admRO=()=>{const a=admMe();return !!(a&&a.role!=='Super Admin');};
-const RO_OK=new Set('actTab admCopy admPw aiToggle cert close closeTo conBack conCode conEye conLogin conOut cycView dlAll dlF emAll emF emOpen fxTx fxViewForm fxOT go navBack previewDoc rmAll scrim slide slotAll stAll stPre stTab statement stmt stockReport tcGo tcPrint tcView viewAs viewCert viewDoc viewId shopF pkF coopCert reset'.split(' '));
+const RO_OK=new Set('pfTog pfMode pfSel actTab admCopy admPw aiToggle cert close closeTo conBack conCode conEye conLogin conOut cycView dlAll dlF emAll emF emOpen fxTx fxViewForm fxOT go navBack previewDoc rmAll scrim slide slotAll stAll stPre stTab statement stmt stockReport tcGo tcPrint tcView viewAs viewCert viewDoc viewId shopF pkF coopCert reset'.split(' '));
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el||!route().startsWith('admin')||!admAuthed())return;if(admCan(el.dataset.a))return;e.preventDefault();e.stopImmediatePropagation();const g=ACT_GROUP[el.dataset.a];toast((g?ADM_GROUPS[g][0]+' access is needed for this. ':'Only a Super Admin can do this. ')+'Ask a Super Admin.');},true);
 function roMark(){if(!route().startsWith('admin')||!admAuthed())return;const ro=admRO();document.body.classList.toggle('adm-ro',ro);if(!ro)return;
  document.querySelectorAll('#app [data-a],#modal [data-a]').forEach(el=>{if(!admCan(el.dataset.a)){el.classList.add('ro-off');el.setAttribute('aria-disabled','true');el.title='Not included in your role';}});
@@ -5358,6 +5368,41 @@ const _adminShellRO=adminShell;adminShell=function(r){let h=_adminShellRO(r);if(
  h=h.replace(/<small>[^<]*<\/small><\/span><button data-a="conOut"/,`<small>${esc(a.role)}${gs.length?'':' · View only'}</small></span><button data-a="conOut"`);
  if(a.role!=='Super Admin')h=h.replace('<div class="fx-panel','<div class="ro-note">'+ic(gs.length?'shield':'eye')+`<span><b>${esc(a.role)} access.</b> ${gs.length?'You can make changes in: '+gs.map(g=>ADM_GROUPS[g][0]).join(', ')+'. Everything else is view only.':'You can see everything but cannot make changes.'}</span></div><div class="fx-panel`);
  return h;};
+
+
+/* PLATFORM PERFORMANCE: several indicators on one chart */
+const PF_SERIES=[['cap','Capital raised','#356F17'],['del','Stock delivered','#2a78d6'],['sal','Sales reported','#eb6834'],['rem','Remittance confirmed','#6250d6'],['ret','Returns paid','#eda100']];
+const PF_=()=>window.PF||(window.PF={mode:'cum',off:{},sel:null});
+function perfData(months){const P=S.st.slotPrice,first=months[0];
+ const items={cap:S.holdings.filter(h=>['reserved','active','redeem'].includes(h.status)).map(h=>[mKey(h.paidAt||h.issuedAt||first),h.slots*P]),
+  del:S.deliveries.filter(d=>d.status===3).map(d=>{const t=dTs(d,3);return [t?mKey(new Date(t).toISOString()):first,dValue(d)];}),
+  sal:(S.sreps||[]).map(x=>[mKey(x.at||first),+x.amount||0]),
+  rem:(S.remits||[]).filter(x=>x.status==='confirmed').map(x=>[mKey(x.settledAt||x.date||first),+x.amount||0]),
+  ret:(S.payouts||[]).map(x=>[mKey(x.date||first),(x.perSlot||0)*(x.slots||0)])};
+ const series=PF_SERIES.map(([k,l,c])=>{const it=items[k];let run=it.filter(a=>a[0]<first).reduce((a,b)=>a+b[1],0);const mon=months.map(m=>it.filter(a=>a[0]===m).reduce((a,b)=>a+b[1],0));const cum=mon.map(v=>run+=v);return {k,l,c,mon,cum};});
+ return {months:months.map(mLab),series};}
+function perfSvg(pf,W,H,L,R,T,B,ev){const st=PF_(),vis=pf.series.filter(x=>!st.off[x.k]),val=x=>st.mode==='mon'?x.mon:x.cum,n=pf.months.length;
+ const top=Math.max(1,...vis.flatMap(x=>val(x))),step=niceStep(top*1.08),max=Math.ceil(top*1.08/step)*step,x=i=>L+(n<2?0:i*(W-L-R)/(n-1)),y=v=>T+(H-T-B)*(1-v/max);
+ const ticks=[];for(let t=0;t<=max+1;t+=step)ticks.push(t);
+ const path=vs=>{const P2=vs.map((v,i)=>[x(i),y(v)]);let d=`M${P2[0][0]},${P2[0][1]}`;for(let i=1;i<P2.length;i++){const [x0,y0]=P2[i-1],[x1,y1]=P2[i],cx=(x0+x1)/2;d+=` C${cx},${y0} ${cx},${y1} ${x1},${y1}`;}return d;};
+ const sel=st.sel==null?n-1:st.sel;
+ return `<svg class="an-svg pf-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Platform performance by month">
+ ${ticks.map(t=>`<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" class="an-grid"/><text x="${L-8}" y="${y(t)+4}" class="cap-ax" text-anchor="end">${t?M(t):'₦0'}</text>`).join('')}
+ <line x1="${x(sel)}" x2="${x(sel)}" y1="${T}" y2="${H-B}" class="pf-sel"/>
+ ${vis.map(s=>`<path d="${path(val(s))}" fill="none" stroke="${s.c}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`).join('')}
+ ${vis.map(s=>`<circle cx="${x(sel)}" cy="${y(val(s)[sel])}" r="4.5" fill="${s.c}" stroke="#fff" stroke-width="2"/>`).join('')}
+ ${pf.months.map((m,i)=>`<text x="${x(i)}" y="${H-10}" class="cap-ax" text-anchor="middle">${(i%ev===0||i===n-1)&&!(ev>1&&i===n-2)?m.split(' ')[0]:''}</text>`).join('')}
+ ${pf.months.map((m,i)=>`<rect class="an-hit" data-a="pfSel" data-i="${i}" x="${x(i)-(W-L-R)/Math.max(1,n-1)/2}" y="${T}" width="${(W-L-R)/Math.max(1,n-1)}" height="${H-T-B}" ${tipAttr(m+(st.mode==='mon'?' · that month':' · running total')+'\n'+vis.map(s=>s.l+': '+N(val(s)[i])).join('\n'))} data-cx="${x(i)}"/>`).join('')}<line class="an-cross" x1="0" x2="0" y1="${T}" y2="${H-B}"/></svg>`;}
+function perfChart(pf){const st=PF_(),n=pf.months.length,sel=st.sel==null?n-1:st.sel;
+ const legend=`<div class="pf-leg">${pf.series.map(s=>`<button class="pf-chip ${st.off[s.k]?'off':''}" data-a="pfTog" data-k="${s.k}" aria-pressed="${!st.off[s.k]}"><i style="background:${s.c}"></i><span>${s.l}</span><b class="num">${M(s.cum[n-1])}</b></button>`).join('')}</div>`;
+ const mode=`<div class="pf-mode"><button class="${st.mode==='cum'?'on':''}" data-a="pfMode" data-v="cum">Running total</button><button class="${st.mode==='mon'?'on':''}" data-a="pfMode" data-v="mon">Each month</button></div>`;
+ const cap=pf.series[0],sal=pf.series[2],rem=pf.series[3];
+ const detail=`<div class="pf-det"><div class="pf-dh"><b>${pf.months[sel]}</b><span>${sel===n-1?'Latest month':'Selected month'} · tap another month to compare</span></div><div class="pf-dg">${pf.series.map(s=>`<div><span><i style="background:${s.c}"></i>${s.l}</span><b class="num">${N(s.mon[sel])}</b><small>this month · ${N(s.cum[sel])} to date</small></div>`).join('')}
+ <div class="pf-ratio"><span>Remittance rate to date</span><b class="num">${sal.cum[sel]?Math.round(rem.cum[sel]/sal.cum[sel]*100)+'%':'—'}</b><small>remittance confirmed ÷ sales reported</small></div></div></div>`;
+ return `<div class="pf-top">${legend}${mode}</div><div class="cap-d">${perfSvg(pf,760,260,62,26,20,34,1)}</div><div class="cap-m">${perfSvg(pf,400,260,54,18,20,30,2)}</div>${detail}`;}
+A.pfTog=d=>{const st=PF_(),on=PF_SERIES.filter(x=>!st.off[x[0]]).length;if(!st.off[d.k]&&on<=1)return toast('Keep at least one line on.');st.off[d.k]=!st.off[d.k];render();};
+A.pfMode=d=>{PF_().mode=d.v;render();};
+A.pfSel=d=>{PF_().sel=+d.i;render();};
 
 /* CAPITAL RAISED v2 */
 const niceStep=m=>{const r=m/4,p=Math.pow(10,Math.floor(Math.log10(r||1))),n=r/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p;};
