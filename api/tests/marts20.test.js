@@ -106,8 +106,18 @@ test('5. payments by stage: each member pays the ₦50,000 fee once, on their fi
     if (m.plan === 'full-mixed') toPay.push(...hs.slice(0, Math.floor(hs.length / 2)));
     if (['full-review', 'full-confirmed', 'opened', 'delivered', 'paid-out', 'redeemed'].includes(m.plan)) toPay.push(...hs);
   }
-  // a member pays stake by stake: the first carries the fee and must clear before the next (a second fee-carrying payment is refused)
   const isReview = (h) => h.mart.plan === 'full-review';
+  // A review payment stays unconfirmed, and while a member's first (fee-carrying) payment is unconfirmed the platform
+  // refuses their next one. So a member whose only payments would be review stakes first pays one ordinary stake
+  // (from a part-paid or mixed mart that stays short of full), or keeps just one review stake.
+  for (const mem of members) {
+    const mine = toPay.filter((h) => h.mem === mem);
+    if (mine.length < 2 || !mine.every(isReview)) continue;
+    const ids = new Set(toPay.map((h) => h.id));
+    const extra = mem.holdings.map((h) => ({ ...h, mem })).find((h) => ['part-paid', 'full-mixed'].includes(h.mart.plan) && !ids.has(h.id) && toPay.filter((x) => x.mart === h.mart).length + 1 < holdingsOf(h.mart).length);
+    if (extra) toPay.push(extra); else mine.slice(1).forEach((h) => toPay.splice(toPay.indexOf(h), 1));
+  }
+  // a member pays stake by stake: the first carries the fee and must clear before the next (a second fee-carrying payment is refused)
   const queue = {}; toPay.forEach((h) => (queue[h.mem.id] = queue[h.mem.id] || []).push(h));
   Object.values(queue).forEach((q) => q.sort((x, y) => isReview(x) - isReview(y)));
   let first = true;
