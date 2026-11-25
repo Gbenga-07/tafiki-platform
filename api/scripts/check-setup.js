@@ -47,6 +47,8 @@ const mask = (v) => (v ? v.slice(0, 8) + '…' : '(empty)');
   }
 
   console.log('\nTermii (SMS)');
+  if (['0', 'false', 'off'].includes(String(e.OTP_REQUIRED || 'on').toLowerCase())) warn('OTP_REQUIRED is off: withdrawals and bank changes do not ask for an SMS code'); else ok('SMS codes are required for withdrawals, bank and phone changes');
+  if (!e.ANTHROPIC_API_KEY) warn('No ANTHROPIC_API_KEY: the console AI assistant is off'); else ok(`Console AI assistant is on (model ${e.ANTHROPIC_MODEL || 'claude-sonnet-5-5'})`);
   if (!e.TERMII_API_KEY) warn('No TERMII_API_KEY: SMS are logged in the console, not sent (stores still see delivery codes in their portal)');
   else {
     try { const base = (e.TERMII_BASE_URL || 'https://api.ng.termii.com').replace(/\/$/, ''); const r = await fetch(base + '/api/get-balance?api_key=' + encodeURIComponent(e.TERMII_API_KEY)); const j = await r.json().catch(() => ({}));
