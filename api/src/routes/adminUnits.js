@@ -42,10 +42,15 @@ r.post('/packages/:id/open', requirePerm('packages'), async (req, res) => { cons
 r.get('/holdings', async (req, res) => {
   let q = getDb()('holdings as h').join('users as u', 'u.id', 'h.user_id').join('packages as p', 'p.id', 'h.package_id')
     .select('h.*', 'u.name as holder', 'u.email as holder_email', 'u.kyc_status', 'p.name as package_name',
-      getDb().raw("(select coalesce(max(y.fee_amount), 0) from payments y where y.holding_id = h.id and y.status in ('success', 'pending_review', 'refund_due')) as membership_fee")).orderBy('h.created_at', 'desc').limit(1000);
+      getDb().raw("(select coalesce(max(y.fee_amount), 0) from payments y where y.holding_id = h.id and y.status in ('success', 'pending_review', 'refund_due')) as membership_fee"),
+      getDb().raw('(select max(y.created_at) from payments y where y.holding_id = h.id) as last_payment_at')).orderBy('h.created_at', 'desc').limit(1000);
   if (req.query.status) q = q.where('h.status', req.query.status);
   if (req.query.packageId) q = q.where('h.package_id', req.query.packageId);
-  res.json({ holdings: await q });
+  res.json({ holdings: await q, releaseAfterHours: units.releaseAfterHours() });
+});
+r.post('/holdings/:id/release', requirePerm('payments'), async (req, res) => {
+  const h = await units.releaseUnconfirmed(req.params.id, me(req));
+  res.json({ holding: { id: h.id, ref: h.ref, status: h.status } });
 });
 r.get('/payments', async (req, res) => {
   let q = getDb()('payments as y').join('holdings as h', 'h.id', 'y.holding_id').join('users as u', 'u.id', 'y.user_id').select('y.id', 'y.reference', 'y.provider', 'y.amount', 'y.fee_amount', 'y.fee_status', 'y.status', 'y.channel', 'y.created_at', 'y.verified_at', 'h.ref', 'h.units', 'u.name as payer').orderBy('y.created_at', 'desc').limit(1000);

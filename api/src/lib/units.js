@@ -118,6 +118,37 @@ async function expireReservations() {
   return n;
 }
 
+// A stake whose payment has not been confirmed can be released by the team once it has waited RELEASE_AFTER_HOURS (default 24).
+const releaseAfterHours = () => Math.max(1, Number(process.env.RELEASE_AFTER_HOURS) || 24);
+async function waitingSince(h, db) {
+  const y = await db('payments').where({ holding_id: h.id }).orderBy('created_at', 'desc').first();
+  return new Date((y && y.created_at) || h.created_at);
+}
+async function releaseUnconfirmed(holdingId, actor) {
+  const db = getDb();
+  const h = await db('holdings').where({ id: holdingId }).first();
+  if (!h) throw new HttpError(404, 'Stake not found.');
+  if (!['unpaid', 'confirming'].includes(h.status) || h.payment_verified) throw bad('Only stakes whose payment has not been confirmed can be released.');
+  const hrs = releaseAfterHours(); const since = await waitingSince(h, db);
+  const left = since.getTime() + hrs * 3600000 - now().getTime();
+  if (left > 0) throw bad(`This payment can be released ${hrs} hours after it started. Try again in about ${Math.ceil(left / 3600000)} hour${Math.ceil(left / 3600000) > 1 ? 's' : ''}.`);
+  // last check with Paystack, so a payment that did go through is never released
+  const ps = await db('payments').where({ holding_id: h.id, provider: 'paystack' }).whereIn('status', ['initialized', 'pending_review']);
+  for (const y of ps) {
+    try {
+      const v = await require('./paystack').verify(y.reference);
+      if (v && v.status === 'success' && Math.round(v.amount) === Math.round(Number(y.amount) * 100) && v.currency === 'NGN') { await markPaymentSuccess(y, { channel: v.channel, raw: v }); throw bad('Paystack shows this payment went through, so the stake has been confirmed instead of released.'); }
+    } catch (e) { if (e.status === 400) throw e; }
+  }
+  const won = await db('holdings').where({ id: h.id, payment_verified: false }).whereIn('status', ['unpaid', 'confirming']).update({ status: 'cancelled', cancel_reason: `Payment not confirmed within ${hrs} hours`, reserved_until: null });
+  if (!won) throw bad('This stake changed while you were looking at it. Refresh and try again.');
+  await db('payments').where({ holding_id: h.id }).whereIn('status', ['initialized', 'pending_review']).update({ status: 'failed' });
+  await activity.log(actor, 'units.released', { type: 'holding', id: h.id }, { ref: h.ref, units: h.units, waitingHours: Math.floor((now() - since) / 3600000) });
+  const u = await db('users').where({ id: h.user_id }).first();
+  if (u) await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'units', ref: h.ref, subject: `Your units for ${h.ref} have been released`, paragraphs: [`We could not confirm a payment for ${h.ref} (${h.units} unit${h.units > 1 ? 's' : ''}) within ${hrs} hours, so the units have been released for other members.`, 'If you did send money, reply to this email with your proof of payment and we will check it and refund you or offer units in another package.', 'You can buy again from your dashboard while units are still open.'] });
+  return db('holdings').where({ id: h.id }).first();
+}
+
 async function openPackage(packageId, storeUserId, actor) {
   const db = getDb();
   const p = await db('packages').where({ id: packageId }).first();
@@ -141,4 +172,4 @@ async function openPackage(packageId, storeUserId, actor) {
   await sendEmail({ to: store.email, name: 'Mart Manager', category: 'operations', ref: p.id, subject: `${p.name} is open: stock is on its way to ${store.shop}`, paragraphs: [`${p.name} is fully funded and now trading at ${store.shop}.`, 'Stock orders have been raised. You will get an email at each delivery stage, your delivery code by SMS, and a goods-received note when each load arrives.'], receipt: { title: 'Package opened', rows: [['Mart', store.shop], ['Package', p.name], ['Units funded', String(p.units_total)], ['Stock value to receive', fmtN(p.units_total * (await getTerms()).unitPrice)], ['Opened', new Date().toDateString()]] } });
   return db('packages').where({ id: p.id }).first();
 }
-module.exports = { HELD, CONFIRMED, unitsTaken, unitsConfirmed, settle, markPaymentSuccess, onKycVerified, expireReservations, openPackage, verifyCode, issueCertificate };
+module.exports = { HELD, CONFIRMED, unitsTaken, unitsConfirmed, settle, markPaymentSuccess, onKycVerified, expireReservations, releaseUnconfirmed, waitingSince, releaseAfterHours, openPackage, verifyCode, issueCertificate };

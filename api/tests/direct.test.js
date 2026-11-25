@@ -50,3 +50,25 @@ test('if Paystack cannot start the checkout, the units are released at once', as
   down = true; const r = await a.post('/api/holdings').send({ packageId: pkg, units: 1, signedName: 'Ada Obi', agree: true }); down = false;
   assert.ok(r.status >= 400); assert.equal(Number((await db('holdings').where({ user_id: uid, status: 'unpaid' }).count({ n: '*' }).first()).n), 0);
 });
+
+test('an unconfirmed payment can be released by the team only after 24 hours; a payment Paystack shows as paid is confirmed instead', async () => {
+  const r = await a.post('/api/holdings').send({ packageId: pkg, units: 2, signedName: 'Ada Obi', agree: true });
+  const id = r.body.holding.id; const ref = r.body.checkout.reference;
+  await db('holdings').where({ id }).update({ reserved_until: new Date(Date.now() + 48 * 3600e3) }); // keep it from expiring on its own
+  let x = await sup.post('/api/admin/holdings/' + id + '/release');
+  assert.equal(x.status, 400); assert.match(x.body.error || x.body.message || JSON.stringify(x.body), /24 hours/);
+  const list = await sup.get('/api/admin/holdings'); assert.equal(list.body.releaseAfterHours, 24); assert.ok(list.body.holdings.find((h) => h.id === id).last_payment_at);
+  await db('payments').where({ holding_id: id }).update({ created_at: new Date(Date.now() - 25 * 3600e3) });
+  charges[ref].paid = true; // the money did arrive: release must refuse and confirm it
+  x = await sup.post('/api/admin/holdings/' + id + '/release'); assert.equal(x.status, 400);
+  assert.ok((await db('holdings').where({ id }).first()).payment_verified, 'confirmed instead of released');
+  // a second stake that never paid is released, its payment marked failed and the member emailed
+  const r2 = await a.post('/api/holdings').send({ packageId: pkg, units: 3, signedName: 'Ada Obi', agree: true }); const id2 = r2.body.holding.id;
+  await db('holdings').where({ id: id2 }).update({ reserved_until: new Date(Date.now() + 48 * 3600e3) });
+  await db('payments').where({ holding_id: id2 }).update({ created_at: new Date(Date.now() - 25 * 3600e3) });
+  x = await sup.post('/api/admin/holdings/' + id2 + '/release'); assert.equal(x.status, 200, JSON.stringify(x.body));
+  assert.equal((await db('holdings').where({ id: id2 }).first()).status, 'cancelled');
+  assert.equal((await db('payments').where({ holding_id: id2 }).first()).status, 'failed');
+  assert.ok(await db('emails').where('subject', 'like', '%units for%have been released%').first());
+  assert.equal((await sup.post('/api/admin/holdings/' + id + '/release')).status, 400, 'a paid stake cannot be released');
+});
