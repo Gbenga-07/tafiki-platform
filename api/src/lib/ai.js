@@ -55,7 +55,7 @@ const TOOLS = [
         const bal = Number((await db('wallet_tx').where({ user_id: u.id }).whereNot({ status: 'rejected' }).sum({ s: 'amount' }).first()).s) || 0;
         out.push({ name: u.name, email: u.email, phone: u.phone, coopNo: u.coop_no, idStatus: u.kyc_status, accountStatus: u.status, phoneConfirmed: !!u.phone_verified_at, membershipValidUntil: day(u.membership_until), walletBalance: N(bal),
           stakes: (await db('holdings as h').join('packages as p', 'p.id', 'h.package_id').where('h.user_id', u.id).whereNot('h.status', 'cancelled').select('h.ref', 'p.name', 'h.units', 'h.amount', 'h.status')).map((h) => ({ ref: h.ref, mart: h.name, units: h.units, amount: N(h.amount), status: h.status })),
-          payments: (await db('payments').where({ user_id: u.id }).orderBy('created_at', 'desc').limit(8)).map((p) => ({ reference: p.reference, amount: N(p.amount), fee: N(p.fee_amount), method: p.method, status: p.status, date: day(p.created_at) })),
+          payments: (await db('payments').where({ user_id: u.id }).orderBy('created_at', 'desc').limit(8)).map((p) => ({ reference: p.reference, amount: N(p.amount), fee: N(p.fee_amount), method: p.provider, status: p.status, date: day(p.created_at) })),
           withdrawals: (await db('withdrawals').where({ user_id: u.id }).orderBy('created_at', 'desc').limit(5)).map((x) => ({ ref: x.ref, amount: N(x.amount), status: x.status, date: day(x.created_at) })), page: 'admin-inv-' + u.id });
       }
       return out;

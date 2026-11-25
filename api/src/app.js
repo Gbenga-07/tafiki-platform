@@ -50,6 +50,7 @@ function createApp() {
   app.use('/api/admin', wrap(require('./routes/adminOps')));
   app.use('/api/admin', wrap(require('./routes/adminMoney')));
   app.use('/api/admin', wrap(require('./routes/adminMisc')));
+  app.use('/api/admin', wrap(require('./routes/adminData')));
   app.use((req, res) => res.status(404).json({ error: 'Not found.' }));
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
