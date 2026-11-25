@@ -30,8 +30,9 @@ function createApp() {
     return router;
   };
   // modes tell the website whether it is running against test (simulation) or live third-party accounts
-  const modes = () => { const pk = process.env.PAYSTACK_SECRET_KEY || ''; return {
-    payments: !pk ? 'off' : pk.startsWith('sk_live_') ? 'live' : 'test',
+  const modes = () => { const fk = process.env.FLW_SECRET_KEY || '', pk = process.env.PAYSTACK_SECRET_KEY || ''; return {
+    payments: fk ? (fk.startsWith('FLWSECK_TEST') ? 'test' : 'live') : !pk ? 'off' : pk.startsWith('sk_live_') ? 'live' : 'test',
+    gateway: fk ? 'flutterwave' : pk ? 'paystack' : 'none', bankTransfer: !['0', 'false', 'off'].includes(String(process.env.MANUAL_TRANSFERS || 'on').toLowerCase()),
     identity: !process.env.SMILE_PARTNER_ID ? 'off' : process.env.SMILE_ENV === 'production' ? 'live' : 'sandbox',
     sms: !process.env.TERMII_API_KEY ? 'logged' : 'live',
     email: process.env.SMTP_HOST ? 'live' : 'outbox' }; };

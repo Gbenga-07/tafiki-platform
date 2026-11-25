@@ -21,7 +21,7 @@ const me = (req) => ({ type: 'admin', id: req.admin.id });
 // Cleared by a reset, children before parents. Kept: admins, settings, counters, sessions, login records.
 const RESET_TABLES = ['delivery_log', 'delivery_lines', 'deliveries', 'sales_reports', 'remittances', 'store_cycles', 'wallet_tx', 'withdrawals', 'redemptions', 'payout_runs', 'memberships', 'payments', 'kyc_checks', 'holdings', 'packages', 'sms', 'emails', 'codes', 'activity_log', 'users'];
 const PHRASE = 'RESET ALL DATA';
-const liveMoney = () => /^sk_live_/.test(process.env.PAYSTACK_SECRET_KEY || '') && String(process.env.ALLOW_DATA_RESET || '').toLowerCase() !== 'on';
+const liveMoney = () => (/^sk_live_/.test(process.env.PAYSTACK_SECRET_KEY || '') || /^FLWSECK-/.test(process.env.FLW_SECRET_KEY || '')) && String(process.env.ALLOW_DATA_RESET || '').toLowerCase() !== 'on';
 
 async function counts(db) { const o = {}; for (const t of RESET_TABLES) o[t] = Number((await db(t).count({ n: '*' }).first()).n); return o; }
 

@@ -17,6 +17,21 @@ r.post('/paystack', express.raw({ type: '*/*', limit: '1mb' }), async (req, res)
     if (v.status === 'success' && Math.round(v.amount) === Math.round(Number(pay.amount) * 100) && v.currency === 'NGN') await units.markPaymentSuccess(pay, { channel: v.channel, raw: v });
   } catch (e) { console.error('paystack webhook', e.message); }
 });
+// Flutterwave calls this when a payment completes. The verif-hash header must match FLW_SECRET_HASH, and the payment
+// is always re-checked with Flutterwave before units are released.
+r.post('/flutterwave', express.json({ limit: '1mb' }), async (req, res) => {
+  const flutterwave = require('../lib/flutterwave'); const gateway = require('../lib/gateway');
+  if (!flutterwave.validWebhook(req.get('verif-hash'))) return res.status(401).end();
+  res.status(200).end();
+  try {
+    const d = (req.body && req.body.data) || {}; if (!d.tx_ref) return;
+    const pay = await getDb()('payments').where({ reference: d.tx_ref, provider: 'flutterwave' }).first();
+    if (!pay || pay.status === 'success') return;
+    const v = await gateway.check(pay);
+    if (v.ok) await units.markPaymentSuccess(pay, { channel: v.channel, raw: v.raw });
+    else if (v.failed) await getDb()('payments').where({ id: pay.id, status: 'initialized' }).update({ status: 'failed' });
+  } catch (e) { console.error('flutterwave webhook', e.message); }
+});
 // Smile ID posts identity results here. The signature and timestamp prove they came from Smile ID.
 r.post('/smileid', express.json({ limit: '2mb' }), async (req, res) => {
   const kyc = require('../lib/kyc');

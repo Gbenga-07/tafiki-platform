@@ -10,6 +10,8 @@ const counters = require('../lib/counters');
 const units = require('../lib/units');
 const membership = require('../lib/membership');
 const paystack = require('../lib/paystack');
+const flutterwave = require('../lib/flutterwave');
+const gateway = require('../lib/gateway');
 const activity = require('../lib/activity');
 const { sendEmail } = require('../lib/mailer');
 const K = require('../lib/emailkit');
@@ -32,11 +34,14 @@ r.get('/:id', async (req, res) => {
   res.json({ holding: out, payments: await db('payments').where({ holding_id: h.id }).select('reference', 'provider', 'amount', 'fee_amount', 'status', 'channel', 'created_at', 'verified_at') });
 });
 
-// Direct purchase is the default: buying creates the stake and opens Paystack checkout in one step; units are held
-// only for the checkout (terms.checkoutMinutes) and released automatically if it is not completed.
-// Manual bank transfers to escrow (confirmed by Finance) are off unless MANUAL_TRANSFERS=on.
-const manualTransfers = () => ['1', 'true', 'on'].includes(String(process.env.MANUAL_TRANSFERS || 'off').toLowerCase());
-const Reserve = z.object({ packageId: z.string().min(1), units: z.number().int().min(1).max(40), signedName: z.string().trim().min(3).max(120), method: z.enum(['card', 'debit', 'any']).optional(), agree: z.literal(true, { errorMap: () => ({ message: 'Read and accept the key terms and the Unit Subscription and Security Agreement.' }) }) });
+// Buying: the member signs, then chooses how to pay.
+//  - Flutterwave (card, bank transfer, USSD, bank account): units are held for the checkout (terms.checkoutMinutes)
+//    and released automatically if it is not completed.
+//  - Bank transfer to the escrow account: units are held for RELEASE_AFTER_HOURS (24). The member reports the transfer,
+//    Finance confirms it. Not reported in time: released automatically. Reported but unconfirmed after 24 hours: the
+//    console can release it. Set MANUAL_TRANSFERS=off to hide the bank transfer option.
+const manualTransfers = () => !['0', 'false', 'off'].includes(String(process.env.MANUAL_TRANSFERS || 'on').toLowerCase());
+const Reserve = z.object({ packageId: z.string().min(1), units: z.number().int().min(1).max(40), signedName: z.string().trim().min(3).max(120), method: z.enum(['card', 'debit', 'any', 'flutterwave', 'transfer']).optional(), agree: z.literal(true, { errorMap: () => ({ message: 'Read and accept the key terms and the Unit Subscription and Security Agreement.' }) }) });
 r.post('/', async (req, res) => {
   const d = Reserve.parse(req.body); const u = req.user;
   if (u.role !== 'investor') throw new HttpError(403, 'Only unit holder accounts can buy units.');
@@ -50,13 +55,14 @@ r.post('/', async (req, res) => {
     const open = p.units_total - (await units.unitsTaken(p.id, trx));
     if (d.units > open) throw bad(open ? `Only ${open} unit${open > 1 ? 's are' : ' is'} still open in ${p.name}.` : `${p.name} has no units left.`);
     ref = 'FC-' + (await counters.next('holding', 1001, trx));
-    await trx('holdings').insert({ id, ref, user_id: u.id, package_id: p.id, units: d.units, amount: d.units * terms.unitPrice, status: 'unpaid', reserved_until: addMinutes(now(), manualTransfers() ? terms.reservationHours * 60 : (terms.checkoutMinutes || 30)), signed_name: d.signedName, signed_at: now(), agreement_version: config.termsVersion });
+    await trx('holdings').insert({ id, ref, user_id: u.id, package_id: p.id, units: d.units, amount: d.units * terms.unitPrice, status: 'unpaid', reserved_until: addMinutes(now(), terms.checkoutMinutes || 30), signed_name: d.signedName, signed_at: now(), agreement_version: config.termsVersion });
   }));
-  await activity.log({ type: 'user', id: u.id }, manualTransfers() ? 'units.reserved' : 'units.checkout_started', { type: 'holding', id }, { ref, units: d.units });
+  await activity.log({ type: 'user', id: u.id }, 'units.checkout_started', { type: 'holding', id }, { ref, units: d.units, method: d.method || 'not chosen yet' });
   let h = await db('holdings').where({ id }).first();
   let checkout = null;
-  if (!manualTransfers()) { // direct purchase: open the checkout now; if Paystack is unreachable the units are released
-    try { checkout = await startCheckout(req.user, h, d.method || 'any'); }
+  const method = d.method || (manualTransfers() ? null : flutterwave.configured() ? 'flutterwave' : 'any'); // no bank transfer option: go straight to the online checkout
+  if (method) { // pay straight away; if the gateway is unreachable the units are released
+    try { checkout = await startCheckout(req.user, h, method); }
     catch (e) { await db('holdings').where({ id, status: 'unpaid' }).update({ status: 'cancelled', cancel_reason: 'Checkout could not start' }); throw e; }
     h = await db('holdings').where({ id }).first();
   }
@@ -72,30 +78,46 @@ r.get('/:id/deliveries', async (req, res) => {
 
 async function startCheckout(user, h, method) {
   const db = getDb();
-  if (method === 'transfer' && !manualTransfers()) throw bad('Pay by card, bank or Paystack transfer at checkout. Manual transfers are not used.');
+  if (method === 'transfer' && !manualTransfers()) throw bad('Bank transfer is not available. Please pay online with Flutterwave.');
   if (h.status !== 'unpaid' || h.payment_verified) throw bad('This purchase is not waiting for payment.');
   if (h.reserved_until && new Date(h.reserved_until) < now()) throw bad('This checkout has timed out. Buy again.');
+  const provider = method === 'transfer' ? 'transfer' : method === 'flutterwave' ? 'flutterwave' : 'paystack';
   const reference = `${h.ref}-${Date.now().toString(36).toUpperCase()}`;
-  await db('holdings').where({ id: h.id }).update({ method: method === 'any' ? 'card' : method });
   // The yearly membership fee rides on the member's first stake payment. Locking the member's row makes two
   // simultaneous checkouts decide one at a time, so only one of them can carry the fee.
   const payId = uuid(); let fee = 0; const terms = await getTerms();
   await db.transaction(async (trx) => {
     const u = await trx('users').where({ id: user.id }).forUpdate().first();
     fee = await membership.feeForPayment(u, h.id, trx, terms);
-    await trx('payments').insert({ id: payId, holding_id: h.id, user_id: h.user_id, provider: method === 'transfer' ? 'transfer' : 'paystack', reference, amount: Number(h.amount) + fee, fee_amount: fee, status: 'initialized' });
+    await trx('payments').insert({ id: payId, holding_id: h.id, user_id: h.user_id, provider, reference, amount: Number(h.amount) + fee, fee_amount: fee, status: 'initialized' });
   });
   const total = Number(h.amount) + fee;
   const breakdown = { units: Number(h.amount), membershipFee: fee, total };
-  if (method === 'transfer') return { method, reference, amount: total, breakdown, escrow: await getSetting('escrow'), note: 'Use the reference as the transfer narration, then tap "I have sent the transfer".' };
-  const channels = method === 'card' ? ['card'] : method === 'debit' ? ['bank', 'bank_transfer'] : ['card', 'bank', 'bank_transfer', 'ussd'];
-  let init;
-  try { init = await paystack.initialize({ email: user.email, amountNaira: total, reference, callbackUrl: `${config.appUrl}/#pay-result?ref=${encodeURIComponent(reference)}`, channels, metadata: { holding: h.ref, units: h.units, user: user.id, membership_fee: fee } }); }
-  catch (e) { await db('payments').where({ id: payId }).update({ status: 'failed' }); throw e; }
-  return { method, reference, amount: total, breakdown, authorizationUrl: init.authorization_url, accessCode: init.access_code };
+  if (provider === 'transfer') {
+    const hours = units.releaseAfterHours(); const until = new Date(new Date(h.created_at).getTime() + hours * 3600000);
+    await db('holdings').where({ id: h.id }).update({ method: 'transfer', reserved_until: until });
+    const escrow = await getSetting('escrow'); const pkg = await db('packages').where({ id: h.package_id }).first();
+    await sendEmail({ to: user.email, name: K.first(user), category: 'units', ref: h.ref, subject: `How to pay for ${h.ref} by bank transfer`, title: 'Pay by bank transfer',
+      lead: `Your **${K.units(h.units)}** in **${pkg ? pkg.name : 'FOODCORE'}** are held for you until **${K.when(until)}**. Transfer **${K.N(total)}** to the escrow account below, then tap **I've sent the transfer** on your dashboard.`,
+      hero: { label: 'Amount to transfer', value: K.N(total), sub: fee ? `${K.N(h.amount)} for units + ${K.N(fee)} yearly membership fee` : `${K.units(h.units)} × ${K.N(h.amount / h.units)}` },
+      blocks: [{ type: 'kv', title: 'Escrow account', rows: [['Bank', escrow.bank], ['Account name', escrow.accountName], ['Account number', escrow.accountNumber], ['Amount', K.N(total)], ['Narration / reference', reference]] },
+        { type: 'kv', title: 'Your purchase', rows: [['Stake reference', h.ref], ['FOODCORE Mart', pkg ? pkg.name : ''], ['Units', K.units(h.units)], ['Held until', K.when(until)]] },
+        { type: 'note', tone: 'warn', title: 'Pay only into this escrow account', text: 'Tafiki never asks you to pay into a personal account. Use the reference exactly so we can match your transfer.' }],
+      next: ['Transfer the exact amount and use the reference as the narration.', `Tap **I've sent the transfer** on your dashboard within ${hours} hours, or the units are released.`, 'Finance matches it in the escrow account, usually within one working day, and you get a numbered receipt with a PDF copy.'],
+      cta: { label: 'Open my dashboard', url: K.link('me-invest') } });
+    return { method: 'transfer', reference, amount: total, breakdown, escrow, holdUntil: until, holdHours: hours, note: 'Use the reference as the transfer narration, then tap "I have sent the transfer".' };
+  }
+  await db('holdings').where({ id: h.id }).update({ method: provider === 'flutterwave' ? 'flutterwave' : method === 'any' ? 'card' : method });
+  const callbackUrl = `${config.appUrl}/#pay-result?ref=${encodeURIComponent(reference)}`;
+  let link;
+  try {
+    if (provider === 'flutterwave') link = (await flutterwave.initialize({ reference, amountNaira: total, redirectUrl: callbackUrl, customer: { email: user.email, name: user.name, phonenumber: user.phone || undefined }, meta: { holding: h.ref, units: h.units, user: user.id, membership_fee: fee }, logo: `${config.appUrl}/img/email-logo.png` })).link;
+    else { const channels = method === 'card' ? ['card'] : method === 'debit' ? ['bank', 'bank_transfer'] : ['card', 'bank', 'bank_transfer', 'ussd']; link = (await paystack.initialize({ email: user.email, amountNaira: total, reference, callbackUrl, channels, metadata: { holding: h.ref, units: h.units, user: user.id, membership_fee: fee } })).authorization_url; }
+  } catch (e) { await db('payments').where({ id: payId }).update({ status: 'failed' }); throw e; }
+  return { method: provider, reference, amount: total, breakdown, authorizationUrl: link };
 }
 r.post('/:id/pay', async (req, res) => {
-  const method = req.body && req.body.method; if (!['card', 'debit', 'transfer', 'any'].includes(method)) throw bad('Choose how to pay.');
+  const method = req.body && req.body.method; if (!['card', 'debit', 'transfer', 'any', 'flutterwave'].includes(method)) throw bad('Choose how to pay.');
   const db = getDb(); const h = await db('holdings').where({ id: req.params.id, user_id: req.user.id }).first();
   if (!h) throw new HttpError(404, 'Not found.');
   res.json(await startCheckout(req.user, h, method));
@@ -103,7 +125,7 @@ r.post('/:id/pay', async (req, res) => {
 
 r.post('/:id/transfer-sent', async (req, res) => {
   const db = getDb(); const h = await db('holdings').where({ id: req.params.id, user_id: req.user.id }).first(); if (!h) throw new HttpError(404, 'Not found.');
-  if (!manualTransfers()) throw bad('Manual transfers are not used. Pay at checkout.');
+  if (!manualTransfers()) throw bad('Bank transfer is not available. Please pay online with Flutterwave.');
   const p = await db('payments').where({ holding_id: h.id, provider: 'transfer', status: 'initialized' }).orderBy('created_at', 'desc').first();
   if (!p) throw bad('Start a bank transfer first.');
   await db('payments').where({ id: p.id }).update({ status: 'pending_review' });
@@ -120,10 +142,10 @@ r.post('/:id/transfer-sent', async (req, res) => {
 r.get('/payments/:reference/verify', async (req, res) => {
   const db = getDb(); const pay = await db('payments').where({ reference: req.params.reference, user_id: req.user.id }).first();
   if (!pay) throw new HttpError(404, 'Payment not found.');
-  if (pay.provider === 'paystack' && pay.status !== 'success') {
-    const v = await paystack.verify(pay.reference);
-    if (v.status === 'success' && Math.round(v.amount) === Math.round(Number(pay.amount) * 100) && v.currency === 'NGN') await units.markPaymentSuccess(pay, { channel: v.channel, raw: v });
-    else if (['failed', 'abandoned'].includes(v.status)) await db('payments').where({ id: pay.id }).update({ status: 'failed' });
+  if (gateway.online.includes(pay.provider) && pay.status !== 'success') {
+    const v = await gateway.check(pay);
+    if (v.ok) await units.markPaymentSuccess(pay, { channel: v.channel, raw: v.raw });
+    else if (v.failed) await db('payments').where({ id: pay.id, status: 'initialized' }).update({ status: 'failed' });
   }
   const h = await db('holdings').where({ id: pay.holding_id }).first(); const p2 = await db('payments').where({ id: pay.id }).first();
   res.json({ payment: { reference: p2.reference, status: p2.status }, holding: shapeH(h) });

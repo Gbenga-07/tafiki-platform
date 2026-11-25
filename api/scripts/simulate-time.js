@@ -10,6 +10,7 @@ function refuse(m) { console.error('Not run: ' + m); process.exit(1); }
 if (!(days > 0 && days <= 400)) refuse('give a number of days between 1 and 400, for example: npm run sim:advance -- 28');
 if (e.SIMULATION !== '1') refuse('add SIMULATION=1 to api/.env first (and remove it before going live).');
 if ((e.PAYSTACK_SECRET_KEY || '').startsWith('sk_live_')) refuse('Paystack is on a LIVE key.');
+if ((e.FLW_SECRET_KEY || '').startsWith('FLWSECK-')) refuse('Flutterwave is on a LIVE key.');
 if (e.SMILE_ENV === 'production') refuse('Smile ID is in production.');
 (async () => {
   const db = knexLib(require('../knexfile'));
