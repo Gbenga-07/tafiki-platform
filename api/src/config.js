@@ -6,7 +6,7 @@ const config = {
   port: +(env.PORT || 4000),
   appUrl: env.APP_URL || 'http://localhost:8080',
   apiUrl: env.API_URL || 'http://localhost:4000',
-  consolePath: env.CONSOLE_PATH || '/control',
+  consolePath: env.CONSOLE_PATH || '/console',
   corsOrigins: list(env.CORS_ORIGINS),
   jwtSecret: env.JWT_SECRET || '',
   cookieDomain: env.COOKIE_DOMAIN || undefined,
