@@ -93,6 +93,19 @@ function textVersion(m) {
   out.push(`Questions? Reply to this email${m.ref && !/^[0-9a-f-]{30,}$/.test(m.ref) ? ' quoting ' + m.ref : ''}, or write to support@tafiki.com.`, 'Kind regards,', m.team || TEAM_BY_CAT[m.category] || 'Tafiki Operations', 'tafiki.com');
   return out.filter((x) => x && String(x).trim()).join('\n\n');
 }
+// PDF attachments. spec: [{ kind: 'receipt', data, to, issuer } | { kind: 'certificate', data }]
+const slug = (x) => String(x || '').replace(/[^A-Za-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+async function buildAttachments(spec) {
+  const pdf = require('./pdf'); const out = [];
+  for (const a of spec || []) {
+    try {
+      if (a.kind === 'receipt') out.push({ filename: `Tafiki-${slug(a.data.title.replace(/\b\w/g, (c) => c.toUpperCase()))}-${a.data.number}.pdf`, content: await pdf.receiptPdf(a.data, a.to, a.issuer), contentType: 'application/pdf' });
+      if (a.kind === 'certificate') { const d = { ...a.data }; const items = d.pack || []; d.packLine = items.length ? (n) => items.map((i) => `${(i.bags * n).toLocaleString()} bags of ${i.size} ${i.name}`).join(' + ') : null; out.push({ filename: `Certificate-of-Stake-${d.certNo}.pdf`, content: await pdf.certificatePdf(d), contentType: 'application/pdf' }); }
+    } catch (e) { console.error('PDF attachment failed:', e.message); }
+  }
+  return out;
+}
+const attachNames = (spec) => (spec || []).map((a) => (a.kind === 'receipt' ? `Tafiki-${slug(a.data.title.replace(/\b\w/g, (c) => c.toUpperCase()))}-${a.data.number}.pdf` : `Certificate-of-Stake-${a.data.certNo}.pdf`));
 async function nextReceiptNo(db) { const y = new Date().getFullYear(); const n = await require('./counters').next('receipt:' + y, 1); return `TFK-${y}-${String(n).padStart(6, '0')}`; }
 // receipt: { title, rows: [[label, value]], total: [label, value], note, amount, direction: 'in' (paid to Tafiki) | 'out' (paid by Tafiki) }
 // m: { to, name, category, subject, ref, title, lead, hero:{label,value,sub,tone}, paragraphs:[], blocks:[{type:'kv'|'items'|'steps'|'list'|'code'|'note'|'button',...}],
@@ -103,18 +116,23 @@ async function sendEmail(m) {
   const id = uuid();
   if (receipt && !receipt.number) receipt.number = await nextReceiptNo(db);
   if (receipt && !receipt.date) receipt.date = new Date();
-  const who = await db('users').where({ email: String(to).toLowerCase() }).first('role') || (await db('users').where({ email: to }).first('role'));
+  const who = await db('users').where({ email: String(to).toLowerCase() }).first('role', 'name', 'shop') || (await db('users').where({ email: to }).first('role', 'name', 'shop'));
+  if (!m.fullName && who) m.fullName = who.role === 'retailer' ? who.shop || who.name : who.name;
   const audience = who ? (who.role === 'retailer' ? 'mart' : 'member') : (await db('admins').where({ email: String(to).toLowerCase() }).first('id')) ? 'team' : null;
   m.audience = audience;
+  const spec = [];
+  if (receipt) spec.push({ kind: 'receipt', data: { title: receipt.title, number: receipt.number, date: receipt.date, rows: receipt.rows, total: receipt.total, note: receipt.note, direction: receipt.direction }, to: { name: m.fullName || name, email: to }, issuer: m.team || TEAM_BY_CAT[category] || 'Tafiki Finance' });
+  if (m.certificate) spec.push({ kind: 'certificate', data: m.certificate });
+  if (spec.length) m.blocks = [...(m.blocks || []), { type: 'note', tone: 'info', title: 'Attached', text: attachNames(spec).join(', ') + ' (PDF). Keep it for your records.' }];
   const text = textVersion(m);
   const html = layout(m);
   await db('emails').insert({ id, to_email: to, to_name: name || null, category, subject: receipt ? `${subject} · ${receipt.number}` : subject, body_text: text, body_html: html, ref: ref || null, status: 'queued', created_at: new Date(),
-    receipt_no: receipt ? receipt.number : null, amount: receipt && receipt.amount != null ? receipt.amount : null, direction: receipt ? receipt.direction || null : null, audience });
+    attach: spec.length ? JSON.stringify(spec) : null, receipt_no: receipt ? receipt.number : null, amount: receipt && receipt.amount != null ? receipt.amount : null, direction: receipt ? receipt.direction || null : null, audience });
   if (require('./marts').isPlaceholderEmail(to)) { await db('emails').where({ id }).update({ status: 'skipped', error: 'Mart manager email not set yet' }); return { id, status: 'skipped' }; }
   const t = getTransport();
   if (!t) { await db('emails').where({ id }).update({ status: 'logged' }); return { id, status: 'logged' }; }
   try {
-    const info = await t.sendMail({ from: config.mail.from, replyTo: config.mail.replyTo, to: name ? `"${name}" <${to}>` : to, subject, text, html });
+    const info = await t.sendMail({ from: config.mail.from, replyTo: config.mail.replyTo, to: name ? `"${name}" <${to}>` : to, subject: receipt ? `${subject} · ${receipt.number}` : subject, text, html, attachments: await buildAttachments(spec) });
     await db('emails').where({ id }).update({ status: 'sent', provider_id: String(info.messageId || ''), sent_at: new Date() });
     return { id, status: 'sent' };
   } catch (e) {
@@ -125,7 +143,7 @@ async function sendEmail(m) {
 async function resend(e) {
   const db = getDb(); const t = getTransport();
   if (!t) return { status: 'logged' };
-  try { const info = await t.sendMail({ from: config.mail.from, replyTo: config.mail.replyTo, to: e.to_name ? `"${e.to_name}" <${e.to_email}>` : e.to_email, subject: e.subject, text: e.body_text, html: e.body_html }); await db('emails').where({ id: e.id }).update({ status: 'sent', error: null, provider_id: String(info.messageId || ''), sent_at: new Date() }); return { status: 'sent' }; }
+  try { const info = await t.sendMail({ from: config.mail.from, replyTo: config.mail.replyTo, to: e.to_name ? `"${e.to_name}" <${e.to_email}>` : e.to_email, subject: e.subject, text: e.body_text, html: e.body_html, attachments: e.attach ? await buildAttachments(JSON.parse(e.attach)) : [] }); await db('emails').where({ id: e.id }).update({ status: 'sent', error: null, provider_id: String(info.messageId || ''), sent_at: new Date() }); return { status: 'sent' }; }
   catch (err) { await db('emails').where({ id: e.id }).update({ status: 'failed', error: String(err.message).slice(0, 250) }); return { status: 'failed' }; }
 }
-module.exports = { sendEmail, resend, fmtN, fmtDate, CAT_LABEL, layout, textVersion };
+module.exports = { buildAttachments, attachNames, sendEmail, resend, fmtN, fmtDate, CAT_LABEL, layout, textVersion };

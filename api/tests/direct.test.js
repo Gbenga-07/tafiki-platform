@@ -72,3 +72,17 @@ test('an unconfirmed payment can be released by the team only after 24 hours; a 
   assert.ok(await db('emails').where('subject', 'like', '%units for%have been released%').first());
   assert.equal((await sup.post('/api/admin/holdings/' + id + '/release')).status, 400, 'a paid stake cannot be released');
 });
+
+test('every receipt and the Certificate of Stake go out with a PDF attached, downloadable from the console', async () => {
+  const rc = await db('emails').where({ to_email: 'ada@example.com', category: 'receipts' }).first();
+  const ct = await db('emails').where({ to_email: 'ada@example.com' }).where('subject', 'like', 'Your Certificate of Stake%').first();
+  assert.ok(rc && rc.attach && ct && ct.attach, 'attachments recorded');
+  assert.equal(JSON.parse(rc.attach)[0].kind, 'receipt'); assert.equal(JSON.parse(ct.attach)[0].kind, 'certificate');
+  assert.match(rc.body_text, /Attached: Tafiki-Payment-Receipt-TFK-\d{4}-\d{6}\.pdf/);
+  const list = await sup.get('/api/admin/emails?limit=50'); const row = list.body.emails.find((e) => e.id === ct.id);
+  assert.match(row.attachments[0], /^Certificate-of-Stake-FC-C-\d{4}-\d{4}\.pdf$/); assert.ok(!('attach' in row));
+  for (const id of [rc.id, ct.id]) {
+    const f = await sup.get('/api/admin/emails/' + id + '/attachments/0').buffer(true).parse((res, cb) => { const b = []; res.on('data', (c) => b.push(c)); res.on('end', () => cb(null, Buffer.concat(b))); });
+    assert.equal(f.status, 200); assert.equal(f.headers['content-type'], 'application/pdf'); assert.equal(f.body.slice(0, 4).toString(), '%PDF'); assert.ok(f.body.length > 5000);
+  }
+});

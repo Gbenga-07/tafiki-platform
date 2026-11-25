@@ -39,7 +39,9 @@ async function issueCertificate(h, user, trx) {
       K.stakeSteps(h.status === 'active' ? 3 : 2, { paid: h.paid_at ? K.short(h.paid_at) : undefined, confirmed: K.short(), trading: h.status === 'active' ? 'Earning now' : 'When the package is full' }),
       { type: 'note', tone: 'ok', text: 'Anyone can check this certificate is genuine with the verification code above. Keep it safe; it is your proof of ownership of these units.' }],
     next: h.status === 'active' ? ['Your units are already trading and earning.', 'Returns are paid into your Tafiki wallet at the end of each 90-day cycle.', 'Download the certificate any time from **My Investments** on your dashboard.'] : ['The package opens once every unit in it is paid and confirmed.', 'Stock then goes to the mart and your units start earning.', 'Download the certificate any time from **My Investments** on your dashboard.'],
-    cta: { label: 'Download my certificate', url: K.link('me-invest') } });
+    cta: { label: 'Download my certificate', url: K.link('me-invest') }, fullName: user.name,
+    certificate: await (async () => { const db = getDb(); const t = await getTerms(); const p = await db('packages').where({ id: h.package_id }).first() || {}; const pay = await db('payments').where({ holding_id: h.id, status: 'success' }).orderBy('created_at', 'desc').first(); const up = await require('./terms').getUnitPackage();
+      return { certNo, holder: user.name, ref: h.ref, units: h.units, unitPrice: t.unitPrice, packageName: p.name || 'FOODCORE', area: p.area, city: p.city, state: p.state, targetPct: t.targetPerCycle, cycleDays: t.cycleDays, minHoldMonths: t.minHoldMonths, paidBy: pay ? (pay.provider === 'transfer' ? 'Bank transfer' : 'Card via Paystack') : '', payRef: pay ? pay.reference : '', issuedAt: new Date(), signedName: h.signed_name, signedAt: h.signed_at, verifyCode: verifyCode(h.ref, certNo, user.name), confirmedInMart: await unitsConfirmed(h.package_id), totalUnits: p.units_total || 40, pack: (up && up.items) || [] }; })() });
   return certNo;
 }
 

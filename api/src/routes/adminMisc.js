@@ -7,7 +7,7 @@ r.get('/activity', async (req, res) => res.json({ activity: await getDb()('activ
 // Email records: filter by category, status, direction and words; summary counts per category for the console tabs.
 r.get('/emails', async (req, res) => {
   const db = getDb(); const qy = req.query;
-  let q = db('emails').select('id', 'to_email', 'to_name', 'category', 'subject', 'ref', 'status', 'error', 'created_at', 'sent_at', 'receipt_no', 'amount', 'direction', 'audience').orderBy('created_at', 'desc').limit(Math.min(1000, +(qy.limit || 300)));
+  let q = db('emails').select('id', 'to_email', 'to_name', 'category', 'subject', 'ref', 'status', 'error', 'created_at', 'sent_at', 'receipt_no', 'amount', 'direction', 'audience', 'attach').orderBy('created_at', 'desc').limit(Math.min(1000, +(qy.limit || 300)));
   if (qy.category) q = q.where({ category: qy.category });
   if (qy.status) q = q.where({ status: qy.status });
   if (qy.audience) q = q.where({ audience: qy.audience });
@@ -16,7 +16,7 @@ r.get('/emails', async (req, res) => {
   if (qy.q) { const w = '%' + String(qy.q).slice(0, 80) + '%'; q = q.where((b) => b.where('to_email', 'like', w).orWhere('to_name', 'like', w).orWhere('subject', 'like', w).orWhere('ref', 'like', w).orWhere('receipt_no', 'like', w)); }
   const summary = await db('emails').select('audience', 'category').count({ n: '*' }).sum({ amount: 'amount' }).groupBy('audience', 'category');
   const failed = await db('emails').where({ status: 'failed' }).count({ n: '*' }).first();
-  res.json({ emails: await q, summary: summary.map((x) => ({ audience: x.audience || 'other', category: x.category, count: Number(x.n), amount: Number(x.amount) || 0 })), failed: Number(failed.n) });
+  res.json({ emails: (await q).map((e) => { const sp = e.attach ? JSON.parse(e.attach) : []; delete e.attach; return { ...e, attachments: require('../lib/mailer').attachNames(sp) }; }), summary: summary.map((x) => ({ audience: x.audience || 'other', category: x.category, count: Number(x.n), amount: Number(x.amount) || 0 })), failed: Number(failed.n) });
 });
 // Send a failed or held email again.
 r.post('/emails/:id/resend', async (req, res) => {
@@ -26,7 +26,14 @@ r.post('/emails/:id/resend', async (req, res) => {
   await require('../lib/activity').log({ type: 'admin', id: req.admin.id }, 'email.resent', { type: 'email', id: e.id }, { status: out.status });
   res.json({ status: out.status });
 });
-r.get('/emails/:id', async (req, res) => res.json({ email: await getDb()('emails').where({ id: req.params.id }).first() }));
+r.get('/emails/:id', async (req, res) => { const e = await getDb()('emails').where({ id: req.params.id }).first(); if (!e) return res.status(404).json({ error: 'Email not found.' }); const spec = e.attach ? JSON.parse(e.attach) : []; delete e.attach; res.json({ email: { ...e, attachments: require('../lib/mailer').attachNames(spec) } }); });
+// download an email's PDF attachment (rebuilt from what was sent)
+r.get('/emails/:id/attachments/:n', async (req, res) => {
+  const e = await getDb()('emails').where({ id: req.params.id }).first(); if (!e || !e.attach) return res.status(404).json({ error: 'This email has no attachment.' });
+  const spec = JSON.parse(e.attach); const a = spec[Number(req.params.n)]; if (!a) return res.status(404).json({ error: 'Attachment not found.' });
+  const [file] = await require('../lib/mailer').buildAttachments([a]); if (!file) return res.status(500).json({ error: 'The PDF could not be made.' });
+  res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${file.filename}"` }).send(file.content);
+});
 // Console assistant: read-only answers from live data (needs ANTHROPIC_API_KEY on the server).
 const aiLimit = new Map();
 r.post('/ai', async (req, res) => {
