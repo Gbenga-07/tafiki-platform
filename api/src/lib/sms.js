@@ -12,7 +12,7 @@ function normalisePhone(p) {
 }
 async function sendSms({ to, text, category, ref, mask }) {
   const db = getDb(); const phone = normalisePhone(to); const id = uuid();
-  const stored = mask ? text.split(mask).join('••••••') : text;
+  const stored = mask && process.env.TERMII_API_KEY ? text.split(mask).join('••••••') : text; // test mode: nothing is sent, so the console SMS log shows the code
   if (!phone) { await db('sms').insert({ id, to_phone: String(to || '').slice(0, 20), body: stored.slice(0, 320), category, ref: ref || null, status: 'failed', error: 'Invalid Nigerian phone number' }); return { id, status: 'failed' }; }
   await db('sms').insert({ id, to_phone: phone, body: stored.slice(0, 320), category, ref: ref || null, status: 'queued' });
   const key = process.env.TERMII_API_KEY;

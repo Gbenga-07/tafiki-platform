@@ -1,3 +1,4 @@
+if (process.env.OTP_REQUIRED === undefined) process.env.OTP_REQUIRED = '0'; // the SMS-code test turns it on
 process.env.NODE_ENV = 'test';
 process.env.DB_CLIENT = 'better-sqlite3';
 process.env.DB_FILE = ':memory:';
