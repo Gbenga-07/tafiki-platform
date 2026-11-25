@@ -2180,6 +2180,19 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
 @media(max-width:600px){.pf-leg{grid-template-columns:1fr 1fr}.pf-chip b{font-size:16px}.pf-mode{align-self:stretch}}
 @media(prefers-reduced-motion:reduce){.an-grow,.an-fill{animation:none!important}}
 .an-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;height:200px;border:1px dashed #D9E4CC;border-radius:14px;background:#FAFCF7;color:#7A8770;font-size:12px}.an-empty svg{width:26px;height:26px;color:#A9B99A}.an-empty b{font-size:13.5px;color:#4A5C40}
+@media(max-width:760px){/* sleek table cards: name row, then details two per line */
+ .fx table.fx-t tr{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 14px;padding:12px 14px!important;border-radius:14px;margin:0 0 8px}
+ .fx table.fx-t td{display:flex!important;flex-direction:column;align-items:flex-start!important;justify-content:flex-start!important;gap:1px!important;text-align:left!important;padding:0!important;font-size:13.5px;line-height:1.35;min-width:0}
+ .fx table.fx-t td::before{font-size:10px!important;letter-spacing:.07em!important;max-width:none!important;color:#8A9680!important}
+ .fx table.fx-t td:first-child{grid-column:1/-1;flex-direction:row;align-items:center!important;padding:0 0 9px!important;margin:0!important}
+ .fx table.fx-t td:has(button),.fx table.fx-t td:has(.ad-row),.fx table.fx-t td:has(select),.fx table.fx-t td:has(input){grid-column:1/-1}
+ .fx table.fx-t td:has(.ad-row) .ad-row{justify-content:flex-start;flex-wrap:wrap}
+ .fx table.fx-t .fx-pers{gap:10px!important;min-width:0}.fx table.fx-t .fx-pers>div{min-width:0}
+ .fx table.fx-t .fx-av{width:34px!important;height:34px!important;font-size:12.5px!important;flex:none}
+ .fx table.fx-t .fx-pers b{font-size:14.5px!important;line-height:1.25}.fx table.fx-t .fx-pers span:not(.fx-av){font-size:12px!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+ .fx table.fx-t .fx-st{font-size:12px!important;padding:2px 9px!important;border-radius:999px!important}
+ .fx table.fx-t td>b,.fx table.fx-t td>small{display:block}
+}
 </style>
 </head>
 <body>
