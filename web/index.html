@@ -2193,6 +2193,23 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
  .fx table.fx-t .fx-st{font-size:12px!important;padding:2px 9px!important;border-radius:999px!important}
  .fx table.fx-t td>b,.fx table.fx-t td>small{display:block}
 }
+.em-att{display:flex;flex-wrap:wrap;gap:6px}.em-pdf{display:inline-flex;align-items:center;gap:7px;border:1px solid #E3EBD9;background:#F6FAF1;border-radius:8px;padding:5px 10px 5px 6px;font:inherit;font-size:12.5px;color:#1D4107;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.em-pdf b{background:#B3261E;color:#fff;font-size:9.5px;letter-spacing:.04em;border-radius:4px;padding:2px 5px}.em-pdf:hover{background:#EEF5E6}
+@media(max-width:760px){/* compact member cards: 3 details per line, status in the name row */
+ .fx table.fx-t tr{gap:7px 10px!important;padding:10px 12px!important;margin:0 0 7px!important;border-radius:12px!important}
+ .fx table.fx-t tr:has(td:nth-child(6)){grid-template-columns:repeat(3,minmax(0,1fr))!important}
+ .fx table.fx-t td{font-size:12.5px!important;line-height:1.3!important}
+ .fx table.fx-t td::before{font-size:9px!important;letter-spacing:.08em!important;margin-bottom:1px}
+ .fx table.fx-t td:first-child{padding:0 0 8px!important}
+ .fx table.fx-t tr.has-st td:first-child{grid-row:1;grid-column:1 / -2!important}
+ .fx table.fx-t td.st-cell{grid-row:1;grid-column:-2 / -1!important;align-items:flex-end!important;justify-content:center!important;padding:0 0 8px!important;border-bottom:1px solid #F0F3EC!important}
+ .fx table.fx-t td.st-cell::before{display:none!important}
+ .fx table.fx-t td:has(button)::before{display:none!important}
+ .fx table.fx-t td:has(button){flex-direction:row!important;flex-wrap:wrap;gap:6px!important;padding-top:2px!important}
+ .fx table.fx-t td .fx-btn,.fx table.fx-t td .ad-mini{padding:5px 12px!important;font-size:12px!important;min-height:0!important;line-height:1.3!important}
+ .fx table.fx-t .fx-av{width:30px!important;height:30px!important;font-size:11.5px!important}
+ .fx table.fx-t .fx-pers b{font-size:14px!important}.fx table.fx-t .fx-pers span:not(.fx-av){font-size:11.5px!important}
+ .fx table.fx-t .fx-st{font-size:11px!important;padding:2px 8px!important}
+}
 </style>
 </head>
 <body>
@@ -4458,7 +4475,7 @@ function faConfig(){const t=S.st,f=(id,l,v,step,hint)=>`<div class="ad-fld"><lab
  <ol class="ad-steps"><li>Start a card or bank-debit payment <code>POST /transaction/initialize</code></li><li>Open Paystack checkout with the access code</li><li>Confirm on webhook <code>charge.success</code> (HMAC SHA-512 checked)</li><li>Double-check with <code>GET /transaction/verify/:reference</code></li><li>Issue units and email the Certificate of Stake</li></ol>
  <p class="ad-note">The secret key lives only on the server. Card and bank details are entered on Paystack's checkout and never touch Tafiki.</p></div></div></div>${dataCard()}</div>`;}
 /* mobile: label every table cell from its column heading */
-function labelTables(){document.querySelectorAll('.fx table.fx-t').forEach(t=>{const hs=[...t.querySelectorAll('thead th')].map(th=>th.textContent.trim());t.querySelectorAll('tbody tr').forEach(tr=>[...tr.children].forEach((td,i)=>{if(!td.hasAttribute('data-l'))td.setAttribute('data-l',hs[i]||'');}));});}
+function labelTables(){document.querySelectorAll('.fx table.fx-t').forEach(t=>{const hs=[...t.querySelectorAll('thead th')].map(th=>th.textContent.trim());t.querySelectorAll('tbody tr').forEach(tr=>{[...tr.children].forEach((td,i)=>{if(!td.hasAttribute('data-l'))td.setAttribute('data-l',hs[i]||'');});const st=[...tr.children].find((td,i)=>i>0&&/^status$/i.test(td.getAttribute('data-l'))&&!td.querySelector('button,select,input,a.fx-btn'));tr.classList.toggle('has-st',!!st);if(st)st.classList.add('st-cell');});});}
 function afterRender(r){wireSlides();if(r==='invest')updCalc();if(r==='admin-payouts')renderCalc();labelTables();}
 function ensureRound2(){if(S.fxRound2)return;S.tx.forEach(t=>{if(t.userId==='u2'&&t.type==='withdrawal'&&t.amount===-1666667)t.amount=-1666670;});S.fxRound2=1;save();}
 const _efxR2=ensureFx;ensureFx=function(){_efxR2();ensureRound2();};
@@ -5397,7 +5414,7 @@ const _admCfgL=admCfg;admCfg=function(){const c=_admCfgL();if(!c.v2){c.admins.fo
 const admGroups=()=>{const a=admMe();return a?roleOf(a.role)[2]:[];};
 let admCan=act=>{const a=admMe();if(!a)return false;if(a.role==='Super Admin')return true;if(RO_OK.has(act))return true;const g=ACT_GROUP[act];return !!g&&admGroups().includes(g);};
 const admRO=()=>{const a=admMe();return !!(a&&a.role!=='Super Admin');};
-const RO_OK=new Set('pfTog pfMode pfSel actTab admCopy admPw aiToggle cert close closeTo conBack conCode conEye conLogin conOut cycView dlAll dlF emAll emF emOpen fxTx fxViewForm fxOT go navBack previewDoc rmAll scrim slide slotAll stAll stPre stTab statement stmt stockReport tcGo tcPrint tcView viewAs viewCert viewDoc viewId shopF pkF coopCert reset'.split(' '));
+const RO_OK=new Set('emPdf pfTog pfMode pfSel actTab admCopy admPw aiToggle cert close closeTo conBack conCode conEye conLogin conOut cycView dlAll dlF emAll emF emOpen fxTx fxViewForm fxOT go navBack previewDoc rmAll scrim slide slotAll stAll stPre stTab statement stmt stockReport tcGo tcPrint tcView viewAs viewCert viewDoc viewId shopF pkF coopCert reset'.split(' '));
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el||!route().startsWith('admin')||!admAuthed())return;if(admCan(el.dataset.a))return;e.preventDefault();e.stopImmediatePropagation();const g=ACT_GROUP[el.dataset.a];toast((g?ADM_GROUPS[g][0]+' access is needed for this. ':'Only a Super Admin can do this. ')+'Ask a Super Admin.');},true);
 function roMark(){if(!route().startsWith('admin')||!admAuthed())return;const ro=admRO();document.body.classList.toggle('adm-ro',ro);if(!ro)return;
  document.querySelectorAll('#app [data-a],#modal [data-a]').forEach(el=>{if(!admCan(el.dataset.a)){el.classList.add('ro-off');el.setAttribute('aria-disabled','true');el.title='Not included in your role';}});
@@ -5695,9 +5712,10 @@ A.wdGo=act(async()=>{const v=+val('wd');await API('/api/me/wallet/withdrawals',{
   finally{a.pending=false;AI.busy=false;AI.ctl=null;aiPaint();}};
  /* console: read any email as it was sent, and resend failed ones */
  A.emOpen=async d=>{let e;try{e=(await API('/api/admin/emails/'+d.id)).email;}catch(x){return toast(x.message);}const [sk,sl]=emStatus(e.status),cl=(EM_CATS.find(c=>c[0]===e.category)||['',e.category])[1];
-  fxModal(`<div class="em-v"><div class="em-vh"><span class="em-cat ${e.category}">${cl}</span><h2>${esc(e.subject)}</h2><dl><dt>To</dt><dd>${esc(e.to_name||'')} &lt;${esc(e.to_email)}&gt;</dd><dt>Sent</dt><dd>${emDT(+new Date(e.created_at))}</dd><dt>Status</dt><dd><span class="em-st ${sk}">${sl}</span>${e.error?' · '+esc(e.error):''}</dd>${e.receipt_no?`<dt>Receipt</dt><dd>${esc(e.receipt_no)}${e.amount!=null?' · '+N(+e.amount)+(e.direction==='in'?' received':e.direction==='out'?' paid out':' goods'):''}</dd>`:''}${e.ref?`<dt>Reference</dt><dd>${esc(e.ref)}</dd>`:''}</dl></div>
+  fxModal(`<div class="em-v"><div class="em-vh"><span class="em-cat ${e.category}">${cl}</span><h2>${esc(e.subject)}</h2><dl><dt>To</dt><dd>${esc(e.to_name||'')} &lt;${esc(e.to_email)}&gt;</dd><dt>Sent</dt><dd>${emDT(+new Date(e.created_at))}</dd><dt>Status</dt><dd><span class="em-st ${sk}">${sl}</span>${e.error?' · '+esc(e.error):''}</dd>${e.receipt_no?`<dt>Receipt</dt><dd>${esc(e.receipt_no)}${e.amount!=null?' · '+N(+e.amount)+(e.direction==='in'?' received':e.direction==='out'?' paid out':' goods'):''}</dd>`:''}${e.ref?`<dt>Reference</dt><dd>${esc(e.ref)}</dd>`:''}${(e.attachments||[]).length?`<dt>Attached</dt><dd class="em-att">${e.attachments.map((n,i)=>`<button class="em-pdf" data-a="emPdf" data-id="${e.id}" data-n="${i}" data-name="${esc(n)}"><b>PDF</b>${esc(n)}</button>`).join('')}</dd>`:''}</dl></div>
   <iframe class="em-frame" sandbox="" title="Email as sent"></iframe><div class="acts">${['failed','logged'].includes(e.status)?`<button class="fx-btn light" data-a="emResend" data-id="${e.id}">Send again</button>`:''}<button class="fx-btn" data-a="close">Close</button></div></div>`,'fxm em-modal');
   const f=document.querySelector('.em-frame');if(f)f.srcdoc=e.body_html||('<pre>'+esc(e.body_text)+'</pre>');};
+ A.emPdf=async d=>{try{const r=await fetch(LIVE_API+'/api/admin/emails/'+d.id+'/attachments/'+d.n,{credentials:'include',headers:{'X-Tafiki-Client':'1'}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'The PDF could not be downloaded.');const b=await r.blob(),u=URL.createObjectURL(b),l=document.createElement('a');l.href=u;l.download=d.name||'Tafiki.pdf';document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);}catch(x){toast(x.message);}};
  A.emResend=act(async d=>{const r=await API('/api/admin/emails/'+d.id+'/resend',{method:'POST'});return r;},r=>r&&r.status==='sent'?'Email sent.':r&&r.status==='logged'?'Email is held: the server has no email provider set up yet (test mode).':'Sending failed again. Check the email provider settings.');
 async function payReturn(){const ref=(route().split('ref=')[1]||'').split('&')[0];if(!ref)return;try{const r=await API('/api/holdings/payments/'+encodeURIComponent(decodeURIComponent(ref))+'/verify');await refresh();location.hash='#me-slots';toast(r.payment.status==='success'?'Payment received. Thank you.':r.payment.status==='failed'?'The payment did not go through. You can try again.':'We are confirming your payment.');}catch(e){toast(e.message);location.hash='#me';}}
 
