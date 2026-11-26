@@ -3,6 +3,11 @@ const { getDb } = require('../db');
 const { requireAdmin } = require('../lib/auth');
 const r = express.Router();
 r.use(requireAdmin);
+// Email template library: one sample of every email the platform sends, in the approved design (built by npm run email-templates).
+let TPL = null;
+const loadTpl = () => { if (!TPL) { try { TPL = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '../../assets/email-templates.json'), 'utf8')); } catch (e) { TPL = { generated: null, templates: [] }; } } return TPL; };
+r.get('/email-templates', (req, res) => { const d = loadTpl(); res.json({ generated: d.generated, templates: d.templates.map(({ html, ...t }) => t) }); });
+r.get('/email-templates/:id', (req, res) => { const t = loadTpl().templates.find((x) => x.id === req.params.id); if (!t) return res.status(404).json({ error: 'Template not found.' }); res.json({ template: t }); });
 r.get('/activity', async (req, res) => res.json({ activity: await getDb()('activity_log').orderBy('id', 'desc').limit(Math.min(500, +(req.query.limit || 100))) }));
 // Email records: filter by category, status, direction and words; summary counts per category for the console tabs.
 r.get('/emails', async (req, res) => {

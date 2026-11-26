@@ -10,7 +10,8 @@
     "test": "node --test tests/*.test.js",
     "test:mysql": "TEST_DB=mysql node --test --test-concurrency=1 tests/*.test.js",
     "check": "node scripts/check-setup.js",
-    "sim:advance": "node scripts/simulate-time.js"
+    "sim:advance": "node scripts/simulate-time.js",
+    "email-templates": "node scripts/email-templates.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

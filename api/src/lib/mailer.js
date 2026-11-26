@@ -126,6 +126,10 @@ async function sendEmail(m) {
   if (spec.length) m.blocks = [...(m.blocks || []), { type: 'note', tone: 'info', title: 'Attached', text: attachNames(spec).join(', ') + ' (PDF). Keep it for your records.' }];
   const text = textVersion(m);
   const html = layout(m);
+  if (process.env.EMAIL_CATALOG) { // builds the console's template library from real sends during the test run (npm run email-templates)
+    const site = (new Error().stack.split('\n').slice(1).find((l) => !l.includes('mailer.js')) || '').replace(/^\s*at\s+/, '').replace(/.*[\\/](src[\\/].*?):(\d+):\d+\)?$/, '$1:$2');
+    require('fs').appendFileSync(process.env.EMAIL_CATALOG, JSON.stringify({ site, category, audience, team: m.team || TEAM_BY_CAT[category] || '', subject, title: m.title || '', html, attachments: attachNames(spec) }) + '\n');
+  }
   await db('emails').insert({ id, to_email: to, to_name: name || null, category, subject: receipt ? `${subject} · ${receipt.number}` : subject, body_text: text, body_html: html, ref: ref || null, status: 'queued', created_at: new Date(),
     attach: spec.length ? JSON.stringify(spec) : null, receipt_no: receipt ? receipt.number : null, amount: receipt && receipt.amount != null ? receipt.amount : null, direction: receipt ? receipt.direction || null : null, audience });
   if (require('./marts').isPlaceholderEmail(to)) { await db('emails').where({ id }).update({ status: 'skipped', error: 'Mart manager email not set yet' }); return { id, status: 'skipped' }; }

@@ -42,3 +42,12 @@ test('with live Paystack keys reset is refused unless ALLOW_DATA_RESET=on', asyn
   process.env.PAYSTACK_SECRET_KEY = 'sk_live_x';
   assert.equal((await sup.post('/api/admin/data/reset/start').send({ password: 'Passw0rd!' })).status, 403);
 });
+
+test('email template library: every template lists without its HTML, and each opens in the approved design', async () => {
+  const lib = require('../assets/email-templates.json'); assert.ok(lib.templates.length >= 40, 'library has ' + lib.templates.length);
+  assert.ok(lib.templates.every((t) => t.audience !== 'mart' || !/investor/i.test(t.html)), 'no investor wording in mart emails');
+  assert.ok(lib.templates.every((t) => !/Multipurpose|Hybrid Foods/i.test(t.html)), 'current cooperative name only');
+  const l = await fin.get('/api/admin/email-templates'); assert.equal(l.status, 200); assert.equal(l.body.templates.length, lib.templates.length); assert.ok(!l.body.templates[0].html);
+  const one = await fin.get('/api/admin/email-templates/' + l.body.templates[0].id); assert.match(one.body.template.html, /<!DOCTYPE html>/i);
+  assert.equal((await agent(app).get('/api/admin/email-templates')).status, 401);
+});
