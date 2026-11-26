@@ -43,7 +43,7 @@ async function receiptPdf(r, to = {}, issuer = 'Tafiki Finance') {
   };
   const half = (CW - 14) / 2;
   const dir = r.direction === 'out' ? ['Paid by', 'Paid to'] : r.direction === 'goods' ? ['Supplied by', 'Received by'] : ['Received by', 'Received from'];
-  box(X, half, dir[0], r.direction === 'out' ? ['Tafiki Technology', 'on behalf of FOODCORE Multipurpose Cooperative', 'support@tafiki.com'] : r.direction === 'goods' ? ['Tafiki Distribution Centre', 'for FOODCORE Multipurpose Cooperative', 'support@tafiki.com'] : ['Tafiki Technology', 'for FOODCORE Multipurpose Cooperative', 'support@tafiki.com']);
+  box(X, half, dir[0], r.direction === 'out' ? ['Tafiki Technology', 'on behalf of FOODCORE Cooperative Limited', 'support@tafiki.com'] : r.direction === 'goods' ? ['Tafiki Distribution Centre', 'for FOODCORE Cooperative Limited', 'support@tafiki.com'] : ['Tafiki Technology', 'for FOODCORE Cooperative Limited', 'support@tafiki.com']);
   box(X + half + 14, half, dir[1], [to.name || '', to.email || '']);
   // detail rows
   y += 104;
@@ -81,7 +81,7 @@ async function receiptPdf(r, to = {}, issuer = 'Tafiki Finance') {
   doc.image(A('logo.png'), X, fy + 16, { height: 22 });
   doc.font('S').fontSize(9.5).fillColor(G).text(issuer, X, fy + 44);
   doc.font('R').fontSize(8.5).fillColor(MU).text('tafiki.com · support@tafiki.com', X, fy + 58);
-  doc.font('R').fontSize(7.8).fillColor(MU).text(`This ${String(r.title).toLowerCase()} was issued electronically by Tafiki and is valid without a signature. Quote ${r.number} in any question about it. FOODCORE is a product of FOODCORE Multipurpose Cooperative, licensed by the Lagos State Ministry of Commerce, Cooperatives, Trade and Investment.`, X + CW * 0.42, fy + 16, { width: CW * 0.58, lineGap: 1.5 });
+  doc.font('R').fontSize(7.8).fillColor(MU).text(`This ${String(r.title).toLowerCase()} was issued electronically by Tafiki and is valid without a signature. Quote ${r.number} in any question about it. FOODCORE is a product of FOODCORE Cooperative Limited, registered with the Corporate Affairs Commission (CAC) and the Lagos State Ministry of Commerce, Cooperatives, Trade and Investment.`, X + CW * 0.42, fy + 16, { width: CW * 0.58, lineGap: 1.5 });
   return done(doc);
 }
 
@@ -89,7 +89,7 @@ async function receiptPdf(r, to = {}, issuer = 'Tafiki Finance') {
 // c: { certNo, holder, ref, units, unitPrice, packageName, area, city, state, targetPct, cycleDays, minHoldMonths, paidBy, payRef,
 //      issuedAt, signedName, signedAt, verifyCode, confirmedInMart, totalUnits, packLine(n) }
 async function certificatePdf(c) {
-  const doc = make({ layout: 'landscape', info: { Title: `Certificate of Stake ${c.certNo}`, Subject: 'Certificate of Stake', Author: 'FOODCORE Multipurpose Cooperative' } });
+  const doc = make({ layout: 'landscape', info: { Title: `Certificate of Stake ${c.certNo}`, Subject: 'Certificate of Stake', Author: 'FOODCORE Cooperative Limited' } });
   const W = doc.page.width, H = doc.page.height;
   const txt = (s, x, y, o = {}) => doc.font(o.f || (o.b ? 'B' : 'R')).fontSize(o.s || 11).fillColor(o.c || INK).text(String(s), x, y, { width: o.w, align: o.a || 'left', characterSpacing: o.cs || 0, lineBreak: o.lb !== false ? undefined : false, lineGap: o.lg || 0 });
   const ngn = (v) => '₦' + Math.round(v).toLocaleString('en-NG');
@@ -119,9 +119,9 @@ async function certificatePdf(c) {
   if (c.packLine) { txt(`${mine} of ${total} units · each unit = ${c.packLine(1)}`, CX, gy, { s: 6.4, c: MU, w: mm(70) }); txt('Your units: ' + c.packLine(mine), CX, gy + mm(6), { s: 6.4, c: MU, b: 1, w: mm(70) }); }
   // signature blocks
   doc.image(A('foodcore-mark.png'), mm(95), mm(140), { width: mm(14) });
-  [[mm(95), 'Hybrid Foods and Mart Ltd dba FOODCORE', 'Authorised signatory'], [mm(190), '[Trustee name]', 'Independent trustee for unit holders']].forEach(([x, a, b]) => { doc.moveTo(x, mm(160)).lineTo(x + mm(80), mm(160)).lineWidth(0.8).strokeColor(INK).stroke(); txt(a, x, mm(162), { b: 1, s: 9, c: INK }); txt(b, x, mm(167), { s: 8, c: MU }); });
+  [[mm(95), 'FOODCORE Cooperative Limited', 'Authorised signatory'], [mm(190), '[Trustee name]', 'Independent trustee for unit holders']].forEach(([x, a, b]) => { doc.moveTo(x, mm(160)).lineTo(x + mm(80), mm(160)).lineWidth(0.8).strokeColor(INK).stroke(); txt(a, x, mm(162), { b: 1, s: 9, c: INK }); txt(b, x, mm(167), { s: 8, c: MU }); });
   txt(`Issued electronically on Tafiki. Verification code ${c.verifyCode} · verify at tafiki.com/verify`, mm(95), mm(175), { b: 1, s: 8, c: G, w: W - mm(114) });
-  txt(`Issued under the Unit Subscription and Security Agreement signed by ${c.signedName || c.holder} on ${day(c.signedAt || c.issuedAt)}. Capital is secured by a registered charge over the mart's stock and takings, held by an independent trustee, with recourse limited to that mart. Returns are targets, not guaranteed. Units issued by FOODCORE Multipurpose Cooperative, licensed by the Lagos State MCCTI.`, CX, mm(184), { s: 7, c: MU, w: CWd, lg: 1 });
+  txt(`Issued under the Unit Subscription and Security Agreement signed by ${c.signedName || c.holder} on ${day(c.signedAt || c.issuedAt)}. Capital is secured by a registered charge over the mart's stock and takings, held by an independent trustee, with recourse limited to that mart. Returns are targets, not guaranteed. Units issued by FOODCORE Cooperative Limited, registered with the CAC and the Lagos State MCCTI.`, CX, mm(184), { s: 7, c: MU, w: CWd, lg: 1 });
   return done(doc);
 }
 module.exports = { receiptPdf, certificatePdf };
