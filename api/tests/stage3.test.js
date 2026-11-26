@@ -2,13 +2,9 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { setup, addAdmin, agent, lastEmail } = require('./helpers');
 const ops = require('../src/lib/ops');
-const sms = require('../src/lib/sms');
 let app, db, sup, logi, aud, inv, store, storeId, delivery;
-const sent = [];
 before(async () => {
   ({ app, db } = await setup());
-  process.env.TERMII_API_KEY = 'tk_test'; process.env.TERMII_SENDER_ID = 'Tafiki';
-  sms.setFetch(async (url, opts) => { sent.push({ url, body: JSON.parse(opts.body) }); return { ok: true, json: async () => ({ message_id: 'm' + sent.length, message: 'Successfully Sent' }) }; });
   await addAdmin('Super Admin', 'ops@tafiki.com'); await addAdmin('Logistics Officer', 'logi@tafiki.com'); await addAdmin('Auditor', 'aud@tafiki.com');
   sup = agent(app); await sup.post('/api/admin/auth/login').send({ email: 'ops@tafiki.com', password: 'Passw0rd!' });
   logi = agent(app); await logi.post('/api/admin/auth/login').send({ email: 'logi@tafiki.com', password: 'Passw0rd!' });
@@ -31,14 +27,14 @@ test('opening a package creates the stake delivery with stock for each unit', as
   const full = (await logi.get('/api/admin/deliveries/' + delivery.id)).body.delivery; assert.equal(full.lines.find((l) => l.sku === 'garri-5').qty, 1000);
 });
 
-test('stages move automatically; In Transit texts the delivery code by Termii (masked in our log)', async () => {
+test('stages move automatically; In Transit emails the delivery code to the mart', async () => {
   await db('delivery_log').where({ delivery_id: delivery.id }).update({ at: new Date(Date.now() - 7 * 3600e3) });
   assert.equal(await ops.autoAdvance(), 1);
   await db('delivery_log').where({ delivery_id: delivery.id }).update({ at: new Date(Date.now() - 7 * 3600e3) });
   assert.equal(await ops.autoAdvance(), 1);
   assert.equal(await ops.autoAdvance(), 0); // last step needs the code
-  const s = sent.find((x) => x.body.sms.includes('delivery code')); assert.ok(s); assert.equal(s.body.to, '2348030001101'); assert.equal(s.body.channel, 'dnd'); assert.match(s.body.sms, /\d{6}/);
-  const logged = await db('sms').where({ category: 'delivery_code' }).first(); assert.ok(logged.body.includes('••••••')); assert.ok(!/\d{6}/.test(logged.body)); assert.equal(logged.status, 'sent');
+  const e = await db('emails').where({ to_email: 'kemi@example.com' }).where('subject', 'like', '%In Transit').first(); assert.ok(e, 'in-transit email to the mart');
+  assert.match(e.body_text, /YOUR DELIVERY CODE: \d{6}/); assert.equal(await db('sms').count({ n: '*' }).first().then((r) => Number(r.n)), 0, 'no SMS');
 });
 
 test('store sees its code; driver link completes only with the right code', async () => {

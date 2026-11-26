@@ -55,9 +55,8 @@ r.post('/register', async (req, res) => {
   await sendEmail({ to: email, name: d.firstName, category: 'account', subject: 'Confirm your email for Tafiki', ref: id, title: 'Confirm your email',
     lead: `Welcome to Tafiki. Your email confirmation code is ${value}. Enter it on the sign-up page to confirm this address.`,
     blocks: [{ type: 'code', title: 'Email confirmation code', code: value, sub: 'Expires in 30 minutes' }, coopNo ? { type: 'kv', title: 'Your membership', rows: [['FOODCORE membership number', coopNo]] } : null],
-    next: ['Enter the code to confirm your email.', 'Confirm your phone number with the SMS code.', 'Complete your identity check, then you can take part in member offers.'], help: 'If you did not sign up for Tafiki, you can ignore this email.' });
+    next: ['Enter the code to confirm your email.', 'Complete your identity check, then you can take part in member offers.'], help: 'If you did not sign up for Tafiki, you can ignore this email.' });
   try { await require('../lib/accounts').welcome(await db('users').where({ id }).first()); } catch (e) { console.error(e); }
-  try { await require('../lib/otp').send(await db('users').where({ id }).first(), 'phone_verify'); } catch (e) { /* an invalid number can be fixed later from the dashboard */ }
   await startSession(res, req, 'user', id, config.memberSessionHours * 60);
   const u = await db('users').where({ id }).first();
   res.status(201).json({ user: present.user(u) });

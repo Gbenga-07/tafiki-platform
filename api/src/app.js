@@ -34,7 +34,6 @@ function createApp() {
     payments: fk ? (fk.startsWith('FLWSECK_TEST') ? 'test' : 'live') : !pk ? 'off' : pk.startsWith('sk_live_') ? 'live' : 'test',
     gateway: fk ? 'flutterwave' : pk ? 'paystack' : 'none', bankTransfer: !['0', 'false', 'off'].includes(String(process.env.MANUAL_TRANSFERS || 'on').toLowerCase()),
     identity: !process.env.SMILE_PARTNER_ID ? 'off' : process.env.SMILE_ENV === 'production' ? 'live' : 'sandbox',
-    sms: !process.env.TERMII_API_KEY ? 'logged' : 'live',
     email: process.env.SMTP_HOST ? 'live' : 'outbox' }; };
   app.get('/api/health', (req, res) => res.json({ ok: true, service: 'tafiki-api', time: new Date().toISOString(), modes: modes() }));
   app.use('/api/auth', authLimit, wrap(require('./routes/auth')));

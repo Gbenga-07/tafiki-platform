@@ -221,7 +221,7 @@ async function openPackage(packageId, storeUserId, actor) {
     title: `${store.shop} is open for trading`, lead: `**${p.name}** is fully funded and now trading at **${store.shop}**. Your first stock orders have been raised at the Tafiki Distribution Centre.`,
     hero: { label: 'Stock value to receive', value: K.N(p.units_total * (await getTerms()).unitPrice), sub: `${p.units_total} stock packs · on consignment`, tone: 'info' },
     blocks: [{ type: 'kv', title: 'Your mart', rows: [['Mart', store.shop], ['Package', p.name], ['Stock packs', String(p.units_total)], ['Opened', K.when()], ['First audit', 'Day 28 · ' + K.day(K.addDays(Date.now(), 28))], ['Cycle ends', K.day(K.addDays(Date.now(), (await getTerms()).cycleDays || 90))]] }, K.cycleSteps(0, { stock: 'On the way' })],
-    next: ['You will get an email at every delivery stage, and your **delivery code by SMS** when a load is in transit.', 'Count the bags before you give the driver the code. A goods-received note follows each delivery.', 'Record your sales in the mart portal. Your stock is audited on day 28 and the remittance is settled after it.'],
+    next: ['You will get an email at every delivery stage, with your **delivery code** when a load is in transit. It is also in your mart portal.', 'Count the bags before you give the driver the code. A goods-received note follows each delivery.', 'Record your sales in the mart portal. Your stock is audited on day 28 and the remittance is settled after it.'],
     cta: { label: 'Open my mart portal', url: K.link('login') } });
   return db('packages').where({ id: p.id }).first();
 }

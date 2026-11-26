@@ -60,7 +60,7 @@ async function run(packageId, profit, actor, note) {
     hero: { label: 'Paid to your wallet', value: K.N(h.amount), sub: `${K.units(h.units)} × ${K.N(c.perUnit)} per unit · cycle ${cycleNo}`, tone: 'out' },
     blocks: [{ type: 'kv', title: 'How this cycle went', rows: [['Trading period', `${K.short(start)} to ${K.day()}`], ['Mart profit after tax', K.N(c.profit - c.tax)], ['Paid per unit', K.N(c.perUnit)], ['Your returns to date', K.N(Number((await db('wallet_tx').where({ holding_id: h.id, type: 'payout' }).sum({ s: 'amount' }).first()).s) || h.amount)]] }],
     receipt: { title: 'Payout advice', amount: h.amount, direction: 'out', rows: [['Paid to', `${u.name}${u.coop_no ? ' · ' + u.coop_no : ''}`], ['FOODCORE Mart', p.name], ['Cycle', `${cycleNo} · ${K.short(start)} to ${K.day()}`], ['Stake reference', h.ref], ['Units', `${h.units} × ${K.N(c.perUnit)} per unit`], ['Paid into', 'Tafiki wallet'], ['Wallet balance now', K.N(await walletBalance(u.id))]], total: ['Payout', K.N(h.amount)], note: 'Payouts come from the mart’s realised profit after tax. Targets are not guaranteed.' },
-    next: ['Withdraw to your bank any time from **Wallet** on your dashboard. You will be asked for an SMS code.', `The next cycle runs for ${t.cycleDays} days; its payout is paid the same way.`, 'Your units keep earning until you choose to redeem them.'],
+    next: ['Withdraw to your bank any time from **Wallet** on your dashboard. You will be asked for a code we email you.', `The next cycle runs for ${t.cycleDays} days; its payout is paid the same way.`, 'Your units keep earning until you choose to redeem them.'],
     cta: { label: 'Open my wallet', url: K.link('me-wallet') } }); }
   await activity.log(actor, 'payout.run', { type: 'package', id: packageId }, { cycleNo, profit: c.profit, perUnit: c.perUnit, investors: c.investorsTotal });
   return { id, cycleNo, ...c };
@@ -115,7 +115,7 @@ async function decideWithdrawal(id, ok, actor, { transferReference, reason } = {
   else await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'wallet', ref: w.ref, subject: `Withdrawal ${w.ref} was not paid`,
     title: 'Your withdrawal could not be paid', lead: `We could not pay your withdrawal of **${K.N(w.amount)}**. **The full amount is back in your wallet.**`,
     blocks: [{ type: 'kv', title: 'Withdrawal', rows: [['Reference', w.ref], ['Amount', K.N(w.amount)], ['Bank', `${w.bank_name} ${K.mask(w.bank_account)}`], ['Requested', K.when(w.created_at)], ['Reason', reason || 'Not given'], ['Wallet balance now', K.N(await walletBalance(u.id))]] }],
-    next: ['Check that your bank details on your profile are correct. Changing them needs an SMS code.', 'Then request the withdrawal again from your wallet.'],
+    next: ['Check that your bank details on your profile are correct. Changing them needs a code we email you.', 'Then request the withdrawal again from your wallet.'],
     cta: { label: 'Open my wallet', url: K.link('me-wallet') } });
   await activity.log(actor, ok ? 'wallet.withdrawal_paid' : 'wallet.withdrawal_rejected', { type: 'withdrawal', id }, { ref: w.ref });
   return db('withdrawals').where({ id }).first();

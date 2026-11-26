@@ -3,14 +3,11 @@
 // at once, and the money must add up at the end: capital, fees, wallets, payouts and redemptions.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-process.env.TERMII_API_KEY = 'termii_test_key';
 const { setup, addAdmin, agent } = require('./helpers');
-const sms = require('../src/lib/sms');
 const ops = require('../src/lib/ops');
 const units = require('../src/lib/units');
 const { martKey } = require('../src/lib/marts');
 
-const texts = []; sms.setFetch(async (url, o) => { texts.push(JSON.parse(o.body)); return { ok: true, json: async () => ({ message_id: 'sim' + texts.length }) }; });
 const all = (xs) => Promise.all(xs);
 const settle = () => new Promise((r) => setTimeout(r, 300));
 const PRICE = 2000000, FEE = 50000;
@@ -165,8 +162,8 @@ async function deliverAll(m) {
   for (let i = 0; i < 3; i++) { await db('delivery_log').update({ at: new Date(Date.now() - 7 * 3600e3) }); await ops.autoAdvance(); }
   for (const d of ds) {
     await logi.post('/api/admin/deliveries/' + d.id + '/reissue-code');
-    const t = [...texts].reverse().find((x) => x.sms.includes(d.code + ':') || x.sms.includes(d.code + ' ')); assert.ok(t, 'code SMS ' + d.code);
-    const code = t.sms.match(/(\d{6})/)[1];
+    const t = await db('emails').where({ ref: d.code }).where('subject', 'like', 'New delivery code%').orderBy('created_at', 'desc').first(); assert.ok(t, 'code email ' + d.code);
+    const code = t.body_text.match(/DELIVERY CODE: (\d{6})/)[1];
     const r = await logi.post('/api/admin/deliveries/' + d.id + '/complete').send({ code }); assert.equal(r.status, 200, m.area + ' ' + JSON.stringify(r.body));
   }
 }
@@ -205,7 +202,7 @@ test('9. redemptions after 12 months settle once each', async () => {
 test('10. every page the console and members use answers for all 20 marts, and the money adds up', async () => {
   const pub = (await agent(app).get('/api/packages')).body.packages; assert.equal(pub.length, 20);
   pub.forEach((p) => { const m = marts.find((x) => x.id === p.id); assert.equal(p.unitsTaken, m.taken - (m.plan === 'redeemed' ? holdingsOf(m)[0].units : 0), m.area); assert.ok(p.unitsConfirmed <= p.unitsTaken); });
-  for (const u of ['/api/admin/packages', '/api/admin/stores', '/api/admin/payments?limit=1000', '/api/admin/deliveries?limit=1000', '/api/admin/analytics', '/api/admin/memberships', '/api/admin/payouts', '/api/admin/redemptions', '/api/admin/withdrawals', '/api/admin/remittances', '/api/admin/sms'])
+  for (const u of ['/api/admin/packages', '/api/admin/stores', '/api/admin/payments?limit=1000', '/api/admin/deliveries?limit=1000', '/api/admin/analytics', '/api/admin/memberships', '/api/admin/payouts', '/api/admin/redemptions', '/api/admin/withdrawals', '/api/admin/remittances'])
     assert.equal((await sup.get(u)).status, 200, u);
   for (const m of members.slice(0, 10)) for (const u of ['/api/me', '/api/holdings', '/api/me/wallet']) assert.equal((await m.a.get(u)).status, 200, u);
   // capital counts units only; fees are separate and never part of capital

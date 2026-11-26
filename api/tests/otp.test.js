@@ -1,13 +1,10 @@
-// SMS codes through Termii: confirming a phone, approving withdrawals, changing bank details and phone number.
+// Security codes by email: approving withdrawals and changing bank details. No SMS and no phone confirmation.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 process.env.OTP_REQUIRED = '1';
-process.env.TERMII_API_KEY = 'termii_test_key';
 const { setup, addAdmin, agent } = require('./helpers');
-const sms = require('../src/lib/sms');
-const texts = []; sms.setFetch(async (url, o) => { texts.push(JSON.parse(o.body)); return { ok: true, json: async () => ({ message_id: 'm' + texts.length }) }; });
-const lastCode = (to) => { const t = [...texts].reverse().find((x) => !to || x.to === to); return t && t.sms.match(/(\d{6})/)[1]; };
 let app, db, a, uid, fin;
+const lastCode = async () => { const e = await db('emails').where({ to_email: 'ada@example.com' }).where('subject', 'like', 'Your Tafiki code%').orderBy('created_at', 'desc').first(); return e && e.body_text.match(/(\d{6})/)[1]; };
 
 before(async () => {
   ({ app, db } = await setup());
@@ -19,51 +16,38 @@ before(async () => {
 });
 after(async () => { await db.destroy(); });
 
-test('signing up texts a code to the phone; the code confirms it; the code is masked in the SMS log', async () => {
-  const t = texts.find((x) => x.to === '2348031234567'); assert.ok(t, 'code SMS sent'); assert.match(t.sms, /confirm your phone number is \d{6}/); assert.equal(t.channel, 'dnd');
-  const row = await db('sms').where({ category: 'otp' }).first(); assert.ok(!/\d{6}/.test(row.body), 'stored masked');
-  assert.equal((await a.get('/api/me')).body.user.phoneVerified, false);
-  assert.equal((await a.post('/api/me/phone/verify').send({ code: '000000' })).status, 400);
-  const ok = await a.post('/api/me/phone/verify').send({ code: lastCode('2348031234567') }); assert.equal(ok.status, 200); assert.equal(ok.body.user.phoneVerified, true);
+test('signing up sends no SMS and asks for no phone code; the phone can be changed directly', async () => {
+  assert.equal(Number((await db('sms').count({ n: '*' }).first()).n), 0);
+  assert.equal((await a.post('/api/me/phone/verify').send({ code: '000000' })).status, 404);
+  const ch = await a.patch('/api/me').send({ phone: '08099999999' }); assert.equal(ch.status, 200, JSON.stringify(ch.body));
+  assert.equal((await db('users').where({ id: uid }).first()).phone, '08099999999');
+  assert.equal((await a.post('/api/me/otp').send({ purpose: 'phone_verify' })).status, 400);
 });
 
-test('codes are rate limited: one a minute, five an hour', async () => {
-  await db('codes').where('purpose', 'like', 'otp:%').del();
-  assert.equal((await a.post('/api/me/otp').send({ purpose: 'withdrawal' })).status, 200);
+test('codes go by email and are rate limited: one a minute, five an hour', async () => {
+  const s = await a.post('/api/me/otp').send({ purpose: 'withdrawal' }); assert.equal(s.status, 200); assert.equal(s.body.sentTo, 'ad•••@example.com');
+  const e = await db('emails').where({ to_email: 'ada@example.com' }).where('subject', 'like', 'Your Tafiki code to approve your withdrawal').first(); assert.ok(e); assert.match(e.body_text, /SECURITY CODE: \d{6}/);
   const again = await a.post('/api/me/otp').send({ purpose: 'withdrawal' }); assert.equal(again.status, 429); assert.match(again.body.error, /minute/);
   assert.equal((await a.post('/api/me/otp').send({ purpose: 'nonsense' })).status, 400);
 });
 
 test('a withdrawal needs the code; wrong, missing and reused codes are refused; 5 wrong tries lock the code', async () => {
   await db('wallet_tx').insert({ id: 'w1', user_id: uid, type: 'payout', amount: 50000, memo: 'test credit', status: 'completed', created_at: new Date() });
-  assert.match((await a.post('/api/me/wallet/withdrawals').send({ amount: 10000 })).body.error, /6-digit code/);
+  assert.match((await a.post('/api/me/wallet/withdrawals').send({ amount: 10000 })).body.error, /code we sent to your email/);
   await db('codes').where('purpose', 'like', 'otp:%').del();
-  const s = await a.post('/api/me/otp').send({ purpose: 'withdrawal' }); assert.equal(s.body.sentTo, '•••• 4567');
-  const code = lastCode();
+  await a.post('/api/me/otp').send({ purpose: 'withdrawal' }); const code = await lastCode();
   assert.equal((await a.post('/api/me/wallet/withdrawals').send({ amount: 10000, code: '111111' })).status, 400);
   const ok = await a.post('/api/me/wallet/withdrawals').send({ amount: 10000, code }); assert.equal(ok.status, 201, JSON.stringify(ok.body));
   assert.equal((await a.post('/api/me/wallet/withdrawals').send({ amount: 10000, code })).status, 400, 'a code works once');
-  await db('codes').where('purpose', 'like', 'otp:%').del(); await a.post('/api/me/otp').send({ purpose: 'withdrawal' }); const c2 = lastCode();
+  await db('codes').where('purpose', 'like', 'otp:%').del(); await a.post('/api/me/otp').send({ purpose: 'withdrawal' }); const c2 = await lastCode();
   for (let i = 0; i < 5; i++) await a.post('/api/me/wallet/withdrawals').send({ amount: 1000, code: '222222' });
   const locked = await a.post('/api/me/wallet/withdrawals').send({ amount: 1000, code: c2 }); assert.equal(locked.status, 400); assert.match(locked.body.error, /Too many/);
 });
 
-test('changing bank details needs a code; changing the phone needs a code sent to the new number', async () => {
+test('changing bank details needs an email code', async () => {
   const nb = { bank: { name: 'Access Bank', account: '9876543210', accountName: 'Ada Obi' } };
   assert.equal((await a.patch('/api/me').send(nb)).status, 400);
   await db('codes').where('purpose', 'like', 'otp:%').del(); await a.post('/api/me/otp').send({ purpose: 'bank_change' });
-  assert.equal((await a.patch('/api/me').send({ ...nb, code: lastCode() })).status, 200);
+  assert.equal((await a.patch('/api/me').send({ ...nb, code: await lastCode() })).status, 200);
   assert.equal((await db('users').where({ id: uid }).first()).bank_account, '9876543210');
-  assert.equal((await a.patch('/api/me').send({ phone: '08099999999' })).status, 400);
-  await a.post('/api/me/otp').send({ purpose: 'phone_change', phone: '08099999999' });
-  assert.ok(texts[texts.length - 1].to === '2348099999999', 'sent to the new number');
-  const ch = await a.post('/api/me/phone/change').send({ code: lastCode('2348099999999') }); assert.equal(ch.status, 200); assert.equal(ch.body.user.phone, '08099999999'); assert.equal(ch.body.user.phoneVerified, true);
-});
-
-test('without a Termii key (test mode) nothing is sent and the console SMS log shows the code', async () => {
-  delete process.env.TERMII_API_KEY; const n = texts.length;
-  await db('codes').where('purpose', 'like', 'otp:%').del(); await a.post('/api/me/otp').send({ purpose: 'withdrawal' });
-  assert.equal(texts.length, n);
-  const row = await db('sms').where({ category: 'otp', status: 'logged' }).orderBy('created_at', 'desc').first(); assert.match(row.body, /\d{6}/);
-  process.env.TERMII_API_KEY = 'termii_test_key';
 });

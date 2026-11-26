@@ -1,5 +1,5 @@
 // Full lifecycle with simulated third parties: Smile ID (signed callbacks), Paystack (signed webhooks and verify),
-// Termii (SMS capture and an outage). Runs the whole chain from sign-up to payout, withdrawal and redemption,
+// email capture. Runs the whole chain from sign-up to payout, withdrawal and redemption,
 // with bursts of simultaneous requests at each step, then checks that the money adds up.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
@@ -7,10 +7,8 @@ const crypto = require('crypto');
 const smile = require('smile-identity-core');
 process.env.PAYSTACK_SECRET_KEY = 'sk_test_lifecycle';
 process.env.SMILE_PARTNER_ID = '1234'; process.env.SMILE_API_KEY = Buffer.from('sandbox-key').toString('base64');
-process.env.TERMII_API_KEY = 'termii_test_key';
 const { setup, addAdmin, agent } = require('./helpers');
 const paystack = require('../src/lib/paystack');
-const sms = require('../src/lib/sms');
 const kyc = require('../src/lib/kyc');
 const units = require('../src/lib/units');
 const ops = require('../src/lib/ops');
@@ -19,16 +17,11 @@ const N = 40; // investors, one unit each
 let app, db, sup, fin, logi, aud, view, store, storeId, pkgId;
 const investors = []; // { a, id, email, jobId }
 const charges = {}; // Paystack simulation: reference -> { amount, paid }
-const texts = []; let termiiDown = false;
 
 paystack.setFetch(async (url, opts) => {
   if (url.includes('/transaction/initialize')) { const b = JSON.parse(opts.body); charges[b.reference] = { amount: b.amount, paid: false }; return { ok: true, json: async () => ({ status: true, data: { authorization_url: 'https://checkout.paystack.com/sim-' + b.reference, access_code: 'sim', reference: b.reference } }) }; }
   const ref = decodeURIComponent(url.split('/').pop()); const c = charges[ref] || {};
   return { ok: true, json: async () => ({ status: true, data: { status: c.paid ? 'success' : 'abandoned', amount: c.paid ? c.amount : 0, currency: 'NGN', channel: 'card', reference: ref } }) };
-});
-sms.setFetch(async (url, opts) => {
-  if (termiiDown) return { ok: false, json: async () => ({ message: 'Service unavailable' }) };
-  const b = JSON.parse(opts.body); texts.push(b); return { ok: true, json: async () => ({ message_id: 'sim' + texts.length, message: 'Successfully Sent' }) };
 });
 kyc.setTokenImpl(async (p) => ({ token: 'sandbox-token-' + p.user_id }));
 
@@ -122,39 +115,38 @@ test('5. people still in ID review keep their units waiting; approving them issu
   const pk = (await view.get('/api/admin/packages')).body.packages.find((x) => x.id === pkgId); assert.equal(pk.unitsConfirmed ?? pk.confirmed ?? N, N);
 });
 
-test('6. package opens once even when clicked 3 times; Termii texts the delivery code; driver and console race to complete', async () => {
+test('6. package opens once even when clicked 3 times; the delivery code is emailed to the mart; driver and console race to complete', async () => {
   const op = await all([0, 1, 2].map(() => sup.post('/api/admin/packages/' + pkgId + '/open').send({})));
   assert.equal(op.filter((r) => r.status === 200).length, 1, op.map((r) => r.status).join(','));
   const ds = (await logi.get('/api/admin/deliveries?limit=1000')).body.deliveries; assert.equal(ds.length, N); // one stake delivery per unit holding
   ds.forEach((x) => assert.equal(x.value, 2000000));
   // two job runners at once move every delivery one step at a time
   for (let i = 0; i < 2; i++) { await db('delivery_log').update({ at: new Date(Date.now() - 7 * 3600e3) }); const n = await all([ops.autoAdvance(), ops.autoAdvance()]); assert.equal(n[0] + n[1], N); }
-  const codeFor = (d) => { const t = texts.find((x) => x.sms.includes(d.code + ' ')); assert.ok(t, 'delivery code SMS for ' + d.code); assert.equal(t.to, '2348031110000'); return t.sms.match(/code: (\d{6})/)[1]; };
-  const d = ds[0]; const code = codeFor(d);
+  const codeFor = async (d) => { const e = await db('emails').where({ ref: d.code }).where('subject', 'like', '%In Transit').where('body_text', 'like', '%YOUR DELIVERY CODE%').first(); assert.ok(e, 'delivery code email for ' + d.code); return e.body_text.match(/YOUR DELIVERY CODE: (\d{6})/)[1]; };
+  const d = ds[0]; const code = await codeFor(d);
   assert.equal((await store.get('/api/store/deliveries/' + d.id)).body.delivery.deliveryCode, code);
   const full = (await logi.get('/api/admin/deliveries/' + d.id)).body.delivery; const token = full.driverLink.split('t=')[1];
   const race = await all([agent(app).post('/api/driver/' + token + '/complete').send({ code }), logi.post('/api/admin/deliveries/' + d.id + '/complete').send({ code }), agent(app).post('/api/driver/' + token + '/complete').send({ code })]);
   assert.equal(race.filter((r) => r.status === 200).length, 1, race.map((r) => r.status).join(','));
   // the rest are delivered at the same time
-  const rest = await all(ds.slice(1).map((x) => logi.post('/api/admin/deliveries/' + x.id + '/complete').send({ code: codeFor(x) })));
+  const rest = await all(ds.slice(1).map(async (x) => logi.post('/api/admin/deliveries/' + x.id + '/complete').send({ code: await codeFor(x) })));
   rest.forEach((r) => assert.equal(r.status, 200, JSON.stringify(r.body)));
   const acc = (await store.get('/api/store/account')).body.account; assert.equal(acc.stockReceived, N * 2000000); assert.equal(acc.cycle.k, 1);
   const active = await db('holdings').where({ package_id: pkgId, status: 'active' }).count({ n: '*' }).first(); assert.equal(Number(active.n), N);
 });
 
-test('7. Termii outage: SMS is marked failed, nothing breaks, and the store still sees the code in its portal', async () => {
-  termiiDown = true;
+test('7. a mart order: double clicks move one stage; the code is emailed and in the portal; a reissued code replaces it', async () => {
   const o = await logi.post('/api/admin/deliveries').send({ storeUserId: storeId, items: [{ sku: 'garri-5', qty: 20 }] }); assert.equal(o.status, 201);
   // a double click on "next stage" moves it one stage, not two
   const dbl = await all([0, 1].map(() => logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/advance').send({ fromStage: 0 })));
   assert.deepEqual(dbl.map((r) => r.status).sort(), [200, 409]);
   const adv = await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/advance').send({ fromStage: 1 }); assert.equal(adv.status, 200);
-  const failed = await db('sms').where({ ref: o.body.delivery.code, status: 'failed' }).first(); assert.ok(failed);
   const code = (await store.get('/api/store/deliveries/' + o.body.delivery.id)).body.delivery.deliveryCode; assert.match(code, /^\d{6}$/);
-  termiiDown = false;
+  const mail = await db('emails').where({ ref: o.body.delivery.code }).where('subject', 'like', '%In Transit').where('body_text', 'like', '%YOUR DELIVERY CODE%').first(); assert.ok(mail); assert.ok(mail.body_text.includes(code));
   assert.equal((await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/reissue-code')).status, 200);
-  assert.ok(await db('sms').where({ ref: o.body.delivery.code, status: 'sent' }).first());
   const code2 = (await store.get('/api/store/deliveries/' + o.body.delivery.id)).body.delivery.deliveryCode;
+  assert.ok(await db('emails').where({ ref: o.body.delivery.code }).where('subject', 'like', 'New delivery code%').where('body_text', 'like', '%' + code2 + '%').first(), 'new code emailed');
+  assert.equal((await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/complete').send({ code })).status, 400, 'old code no longer works');
   assert.equal((await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/complete').send({ code: code2 })).status, 200);
 });
 

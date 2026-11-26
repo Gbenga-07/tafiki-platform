@@ -8,7 +8,6 @@ const box = require('./secretbox');
 const counters = require('./counters');
 const { sendEmail } = require('./mailer');
 const K = require('./emailkit');
-const { sendSms } = require('./sms');
 const activity = require('./activity');
 DEFAULTS.logistics = { stageHours: 6, auditDay: 28, cycleDays: 30, maxCodeAttempts: 5 };
 const STAGES = ['Order Received', 'Picked Up', 'In Transit', 'Delivered'];
@@ -43,7 +42,7 @@ async function notifyStage(d) {
     3: `Your order has been delivered to **${store.shop}** and confirmed with your delivery code on **${K.when(at(3))}**. The stock has been added to your consignment account.` }[si];
   const next = {
     0: ['The order is packed and checked against the order list.', `A driver collects it, usually within ${L.stageHours || 6} hours.`, 'You receive an email at every stage until delivery.'],
-    1: [`The driver heads to ${store.shop}.`, 'You will receive an email and your **delivery code by SMS** when the order is in transit.', 'Make sure someone authorised is at the mart to receive it.'],
+    1: [`The driver heads to ${store.shop}.`, 'You will receive an email with your **delivery code** when the order is in transit. It is also in your mart portal.', 'Make sure someone authorised is at the mart to receive it.'],
     2: ['**Count the bags** against the list above before confirming.', 'Give the driver your delivery code **only once the count is correct**.', 'Report any shortage or damage before confirming. Your code is also in your mart portal.'],
     3: ['Record your sales as usual through your Tafiki mart portal.', `Your stock is audited on day ${L.auditDay || 28} of the cycle and the remittance is settled.`, 'The next restock is released after reconciliation.'] }[si];
   let receipt;
@@ -51,9 +50,9 @@ async function notifyStage(d) {
     receipt = { title: 'Goods received note', amount: Number(d.value), direction: 'goods', rows: [['Received by', store.shop], ['Order', `#${d.code} · ${type}`], ['Bags received', bags.toLocaleString()], ['Delivered', K.when(at(3))], ['Driver', driver], ['Stock on consignment now', K.N(acc.onShelf)]], total: ['Value received', K.N(d.value)], note: 'The stock stays Tafiki property until sold. Sales are recorded at the day-28 audit and become remittance due.' }; }
   await sendEmail({ to: store.email, name: 'Mart Manager', category: 'delivery', ref: d.code, subject: `Order #${d.code}: ${st}`, title: `Order #${d.code}: ${st}`, tag: st, preheader: `${bags.toLocaleString()} bags for ${store.shop} · ${st}`,
     lead, blocks: [{ type: 'kv', title: 'Order details', rows: [['Order number', '#' + d.code], ['Order type', type], ['Delivering to', store.shop], ['Supplied by', 'FOODCORE Cooperative · Tafiki Distribution Centre'], ['Driver', si >= 1 ? driver : ''], ['Status', st]] }, items(true), steps,
-      si === 2 ? { type: 'note', tone: 'warn', title: 'Keep your delivery code private', text: 'Your 6-digit code has been sent to the mart phone by SMS. Never share it before the bags are counted. Tafiki staff will never ask for it.' } : null],
+      si === 2 ? { type: 'code', title: 'Your delivery code', code: box.open(d.code_enc), sub: 'Give it to the driver only after counting the bags' } : null,
+      si === 2 ? { type: 'note', tone: 'warn', title: 'Keep your delivery code private', text: 'The same code is in your mart portal. Never share it before the bags are counted. Tafiki staff will never ask for it.' } : null],
     receipt, next, help: `Questions about this order? Reply to this email quoting **#${d.code}**, or contact Tafiki Operations at **support@tafiki.com**.`, team: 'Tafiki Operations' });
-  if (si === 2) { const code = box.open(d.code_enc); await sendSms({ to: store.phone, category: 'delivery_code', ref: d.code, mask: code, text: `Tafiki: Order ${d.code} is on its way to ${store.shop}. Count the bags, then give the driver this delivery code: ${code}. Never share it before delivery.` }); }
   // the unit holder whose stake this stock comes from
   for (const u of await holdersOf(d)) {
     const h = await db('holdings').where({ id: d.holding_id }).first();
@@ -147,7 +146,10 @@ async function reissueCode(id, actor) {
   const secret = randomCode(6);
   await db('deliveries').where({ id }).update({ code_hash: sha256(id + '|' + secret), code_enc: box.seal(secret), code_attempts: 0 });
   const store = await db('users').where({ id: d.store_user_id }).first();
-  await sendSms({ to: store.phone, category: 'delivery_code', ref: d.code, mask: secret, text: `Tafiki: New delivery code for order ${d.code}: ${secret}. Give it to the driver only after counting the bags.` });
+  await sendEmail({ to: store.email, name: 'Mart Manager', category: 'delivery', ref: d.code, subject: `New delivery code for order #${d.code}`, title: 'Your new delivery code', tag: 'New code',
+    lead: `A new delivery code has been issued for order **#${d.code}** to **${store.shop}**. Earlier codes no longer work.`,
+    blocks: [{ type: 'code', title: 'Delivery code', code: secret, sub: 'Give it to the driver only after counting the bags' }, { type: 'kv', title: 'Order', rows: [['Order number', '#' + d.code], ['Delivering to', store.shop], ['Value', K.N(d.value)], ['Issued', K.when()]] },
+      { type: 'note', tone: 'warn', title: 'Keep it private', text: 'The same code is in your mart portal. Tafiki staff will never ask for it.' }] });
   await activity.log(actor, 'delivery.code_reissued', { type: 'delivery', id });
   return true;
 }
@@ -233,7 +235,7 @@ async function reconcile(storeUserId, actor) {
     title: `Cycle ${c.k} is closed and reconciled`, lead: `Well done. Cycle **${c.k}** at **${store.shop}** is closed: the audit and your remittances match. Your restock is being released.`,
     blocks: [K.cycleSteps(4, { stock: 'Done', audit: 'Done', remit: 'Settled', done: K.short() })],
     receipt: { title: 'Cycle statement', rows: [['Mart', store.shop], ['Cycle', `${c.k} · ${K.short(c.start_at)} to ${K.day()}`], ['Audited sales', K.N(c.audited_value)], ['Remittance confirmed to date', K.N(acc.remittanceConfirmed)], ['Stock still on shelf', K.N(acc.onShelf)], ['Restock from', K.day(c.restock_at)]] },
-    next: [`The restock replaces what sold and follows on or after **${K.day(c.restock_at)}**.`, 'You will get an email at every delivery stage and your delivery code by SMS.', 'A new cycle starts when the restock arrives.'] }); }
+    next: [`The restock replaces what sold and follows on or after **${K.day(c.restock_at)}**.`, 'You will get an email at every delivery stage, with your delivery code when it is in transit.', 'A new cycle starts when the restock arrives.'] }); }
   await releaseRestocks(); // releases straight away if the restock date has passed
   return db('store_cycles').where({ id: c.id }).first();
 }

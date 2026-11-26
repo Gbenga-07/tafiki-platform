@@ -1,4 +1,4 @@
-// Console: deliveries, stores, audits, remittances, reconciliation, SMS log.
+// Console: deliveries, stores, audits, remittances, reconciliation.
 const express = require('express');
 const { z } = require('zod');
 const config = require('../config');
@@ -64,5 +64,4 @@ r.post('/stores/:id/reconcile', requirePerm('audit'), async (req, res) => res.js
 r.get('/remittances', async (req, res) => { let q = getDb()('remittances as m').join('users as u', 'u.id', 'm.store_user_id').select('m.*', 'u.shop as store').orderBy('m.created_at', 'desc').limit(1000); if (req.query.status) q = q.where('m.status', req.query.status); res.json({ remittances: await q }); });
 r.post('/remittances/:id/confirm', requirePerm('audit'), async (req, res) => res.json({ remittance: await ops.decideRemittance(req.params.id, true, me(req)) }));
 r.post('/remittances/:id/reject', requirePerm('audit'), async (req, res) => res.json({ remittance: await ops.decideRemittance(req.params.id, false, me(req), String((req.body && req.body.reason) || '').slice(0, 160)) }));
-r.get('/sms', async (req, res) => res.json({ sms: await getDb()('sms').orderBy('created_at', 'desc').limit(300) }));
 module.exports = r;
