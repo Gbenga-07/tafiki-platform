@@ -21,6 +21,28 @@ test('only a Super Admin can export; the export has no secrets', async () => {
   const txt = JSON.stringify(r.body); assert.ok(!/password_hash|code_hash|code_enc|body_html/.test(txt));
 });
 
+test('backups: Super Admin saves, lists, downloads and restores deleted data; a copy is saved before restoring', async () => {
+  const os = require('os'); const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tafiki-bk-')); process.env.BACKUP_DIR = dir; process.env.DUMP_DIR = path.join(dir, 'none');
+  try {
+    assert.equal((await fin.get('/api/admin/data/backups')).status, 403);
+    const saved = await sup.post('/api/admin/data/backups'); assert.equal(saved.status, 201);
+    const l = await sup.get('/api/admin/data/backups'); assert.equal(l.status, 200);
+    const b = l.body.backups.find((x) => x.name === saved.body.backup); assert.ok(b && b.restorable); assert.equal(b.kind, 'Saved by hand'); assert.equal(b.counts.members, 1); assert.equal(b.counts.packages, 1);
+    const dl = await sup.get('/api/admin/data/backups/' + saved.body.backup).buffer(true).parse((res, cb) => { const c = []; res.on('data', (x) => c.push(x)); res.on('end', () => cb(null, Buffer.concat(c))); });
+    assert.equal(dl.status, 200); assert.ok(JSON.parse(zlib.gunzipSync(dl.body)).users.some((u) => u.email === 'ada@example.com'));
+    assert.equal((await sup.get('/api/admin/data/backups/..%2F..%2F.env')).status, 404);
+    await db('packages').del(); assert.equal(Number((await db('packages').count({ n: '*' }).first()).n), 0);
+    assert.equal((await sup.post('/api/admin/data/backups/' + saved.body.backup + '/restore').send({ password: 'wrong', phrase: 'RESTORE BACKUP' })).status, 400);
+    assert.equal((await sup.post('/api/admin/data/backups/' + saved.body.backup + '/restore').send({ password: 'Passw0rd!', phrase: 'restore' })).status, 400);
+    const rs = await sup.post('/api/admin/data/backups/' + saved.body.backup + '/restore').send({ password: 'Passw0rd!', phrase: 'RESTORE BACKUP' }); assert.equal(rs.status, 200, JSON.stringify(rs.body));
+    assert.equal(Number((await db('packages').count({ n: '*' }).first()).n), 1, 'deleted package is back');
+    assert.ok(await db('users').where({ email: 'ada@example.com' }).first());
+    assert.ok((await sup.get('/api/admin/data/backups')).body.backups.some((x) => x.kind === 'Saved before a restore' && x.counts.packages === 0));
+    const daily = require('../src/routes/adminData').dailyBackup; await daily(); await daily();
+    assert.equal(fs.readdirSync(dir).filter((n) => n.startsWith('daily-')).length, 1, 'one daily copy a day');
+  } finally { delete process.env.BACKUP_DIR; delete process.env.DUMP_DIR; fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('reset needs the password, then the token and the exact phrase; it backs up, clears data and keeps admins and settings', async () => {
   assert.equal((await fin.post('/api/admin/data/reset/start').send({ password: 'Passw0rd!' })).status, 403);
   assert.equal((await sup.post('/api/admin/data/reset/start').send({ password: 'wrong' })).status, 400);

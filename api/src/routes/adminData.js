@@ -48,7 +48,7 @@ r.get('/data/export', superOnly, async (req, res) => {
 
 // Step 1 of reset: password. Returns a one-time token valid for 10 minutes and what will be deleted.
 r.post('/data/reset/start', superOnly, async (req, res) => {
-  if (liveMoney()) throw new HttpError(403, 'Live Paystack keys are in use, so resetting is switched off. Set ALLOW_DATA_RESET=on in the API settings only if you are certain.');
+  if (liveMoney()) throw new HttpError(403, 'Live payment keys are in use, so resetting is switched off. Set ALLOW_DATA_RESET=on in the API settings only if you are certain.');
   const db = getDb(); const a = await db('admins').where({ id: req.admin.id }).first();
   if (!(await pw.verify(req.body && req.body.password, a.password_hash))) throw bad('Your password is not correct.');
   const token = randomToken();
@@ -60,16 +60,13 @@ r.post('/data/reset/start', superOnly, async (req, res) => {
 
 // Step 2: token + the typed phrase. Backs up every cleared table, then deletes in one transaction.
 r.post('/data/reset/confirm', superOnly, async (req, res) => {
-  if (liveMoney()) throw new HttpError(403, 'Live Paystack keys are in use, so resetting is switched off.');
+  if (liveMoney()) throw new HttpError(403, 'Live payment keys are in use, so resetting is switched off.');
   const b = req.body || {}; const db = getDb();
   if (String(b.phrase || '').trim() !== PHRASE) throw bad(`Type ${PHRASE} exactly to confirm.`);
   const row = await db('codes').where({ purpose: 'data_reset', subject_type: 'admin', subject_id: req.admin.id, code_hash: sha256(String(b.token || '')) }).whereNull('used_at').first();
   if (!row || new Date(row.expires_at) < new Date()) throw bad('This reset request has expired. Start again.');
   if (!(await db('codes').where({ id: row.id }).whereNull('used_at').update({ used_at: new Date() }))) throw bad('This reset is already running.');
-  const backup = {}; for (const t of RESET_TABLES) backup[t] = await db(t).select();
-  const dir = path.join(__dirname, '..', '..', 'data', 'backups'); fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `before-reset-${new Date().toISOString().replace(/[:.]/g, '-')}.json.gz`);
-  fs.writeFileSync(file, zlib.gzipSync(JSON.stringify(backup)), { mode: 0o600 });
+  const file = await snapshot(db, 'before-reset');
   const removed = {};
   await db.transaction(async (trx) => { for (const t of RESET_TABLES) removed[t] = await trx(t).del(); });
   await activity.log(me(req), 'data.reset', { type: 'system', id: 'all' }, { removed, backup: path.basename(file) });
@@ -80,4 +77,84 @@ r.post('/data/reset/confirm', superOnly, async (req, res) => {
       { type: 'note', tone: 'bad', title: 'Not expected?', text: 'If you did not expect this, contact your Super Admins straight away. The backup above can restore the data.' }], help: false });
   res.json({ ok: true, removed, backup: path.basename(file) });
 });
+
+// ---- Data backups -------------------------------------------------------------------------------
+// The console lists every backup: the copies saved before a reset or a restore, copies saved by hand,
+// and the nightly database dumps in ~/backups. A Super Admin can download any of them, and can restore a
+// console backup after two checks (password and the typed phrase). A fresh backup is always saved first.
+const BACKUP_DIR = () => process.env.BACKUP_DIR || path.join(__dirname, '..', '..', 'data', 'backups');
+const DUMP_DIR = () => process.env.DUMP_DIR || path.join(require('os').homedir(), 'backups');
+const NAME_OK = /^[\w.-]+\.(json|sql)\.gz$/;
+const RESTORE_PHRASE = 'RESTORE BACKUP';
+async function snapshot(db, prefix) {
+  const backup = {}; for (const t of RESET_TABLES) backup[t] = await db(t).select();
+  const dir = BACKUP_DIR(); fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}.json.gz`);
+  fs.writeFileSync(file, zlib.gzipSync(JSON.stringify(backup)), { mode: 0o600 });
+  return file;
+}
+const kindOf = (n) => (/^before-reset/.test(n) ? 'Saved before a reset' : /^before-restore/.test(n) ? 'Saved before a restore' : /^manual/.test(n) ? 'Saved by hand' : /^daily/.test(n) ? 'Daily copy' : /\.sql\.gz$/.test(n) ? 'Nightly database copy' : 'Backup');
+const summaryCache = new Map();
+function summary(file, stat) {
+  const key = file + ':' + stat.mtimeMs; if (summaryCache.has(key)) return summaryCache.get(key);
+  let out = null;
+  try { const d = JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString('utf8')); const u = d.users || [];
+    out = { members: u.filter((x) => x.role === 'investor').length, marts: u.filter((x) => x.role === 'retailer').length, packages: (d.packages || []).length, stakes: (d.holdings || []).length, payments: (d.payments || []).length, emails: (d.emails || []).length };
+  } catch (e) { out = null; }
+  summaryCache.set(key, out); return out;
+}
+function listDir(dir, source) {
+  let names = []; try { names = fs.readdirSync(dir).filter((n) => NAME_OK.test(n)); } catch (e) { return []; }
+  return names.map((name) => { const file = path.join(dir, name); const st = fs.statSync(file);
+    return { name, source, kind: kindOf(name), size: st.size, createdAt: st.mtime, restorable: source === 'console' && /\.json\.gz$/.test(name), counts: source === 'console' ? summary(file, st) : null }; });
+}
+const findBackup = (name) => { if (!NAME_OK.test(String(name || ''))) return null; for (const dir of [BACKUP_DIR(), DUMP_DIR()]) { const f = path.join(dir, name); if (fs.existsSync(f)) return { file: f, console: dir === BACKUP_DIR() }; } return null; };
+r.get('/data/backups', superOnly, async (req, res) => {
+  const all = [...listDir(BACKUP_DIR(), 'console'), ...listDir(DUMP_DIR(), 'nightly')].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  res.json({ backups: all, phrase: RESTORE_PHRASE, restoreAllowed: !liveMoney() });
+});
+r.post('/data/backups', superOnly, async (req, res) => {
+  const file = await snapshot(getDb(), 'manual');
+  await activity.log(me(req), 'data.backup_saved', { type: 'system', id: 'all' }, { backup: path.basename(file) });
+  res.status(201).json({ backup: path.basename(file) });
+});
+r.get('/data/backups/:name', superOnly, async (req, res) => {
+  const f = findBackup(req.params.name); if (!f) throw new HttpError(404, 'Backup not found.');
+  await activity.log(me(req), 'data.backup_downloaded', { type: 'system', id: 'all' }, { backup: req.params.name });
+  res.download(f.file, req.params.name);
+});
+const ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z$/;
+r.post('/data/backups/:name/restore', superOnly, async (req, res) => {
+  if (liveMoney()) throw new HttpError(403, 'Live payment keys are in use, so restoring is switched off. Set ALLOW_DATA_RESET=on in the API settings only if you are certain.');
+  const b = req.body || {}; const db = getDb();
+  const a = await db('admins').where({ id: req.admin.id }).first();
+  if (!(await pw.verify(b.password, a.password_hash))) throw bad('Your password is not correct.');
+  if (String(b.phrase || '').trim() !== RESTORE_PHRASE) throw bad(`Type ${RESTORE_PHRASE} exactly to confirm.`);
+  const f = findBackup(req.params.name); if (!f || !f.console || !/\.json\.gz$/.test(req.params.name)) throw new HttpError(404, 'Only console backups can be restored here. Ask Claude on the server to restore a nightly database copy.');
+  let data; try { data = JSON.parse(zlib.gunzipSync(fs.readFileSync(f.file)).toString('utf8')); } catch (e) { throw bad('This backup file could not be read.'); }
+  const isMy = db.client.config.client !== 'sqlite3' && db.client.config.client !== 'better-sqlite3';
+  const fix = (row) => { const o = {}; for (const [k, v] of Object.entries(row)) o[k] = isMy && typeof v === 'string' && ISO.test(v) ? new Date(v) : v; return o; };
+  const before = await snapshot(db, 'before-restore');
+  const restored = {};
+  await db.transaction(async (trx) => {
+    for (const t of RESET_TABLES) await trx(t).del();
+    for (const t of [...RESET_TABLES].reverse()) { const rows = (data[t] || []).map(fix); restored[t] = rows.length; for (let i = 0; i < rows.length; i += 200) await trx(t).insert(rows.slice(i, i + 200)); }
+  });
+  await activity.log(me(req), 'data.restored', { type: 'system', id: 'all' }, { backup: req.params.name, savedFirst: path.basename(before), restored });
+  const supers = await db('admins').where({ role: 'Super Admin', status: 'active' });
+  for (const s of supers) await sendEmail({ to: s.email, name: s.name.split(' ')[0], category: 'security', ref: 'restore', subject: 'Tafiki data was restored from a backup', title: 'Platform data was restored',
+    lead: `**${req.admin.name}** restored the platform data from a backup. The data as it was just before the restore was saved too.`,
+    blocks: [{ type: 'kv', title: 'Restore details', rows: [['Done by', `${req.admin.name} · ${req.admin.email}`], ['Time', K.when()], ['Restored from', req.params.name], ['Saved first as', path.basename(before)]] },
+      { type: 'note', tone: 'bad', title: 'Not expected?', text: 'If you did not expect this, contact your Super Admins straight away.' }], help: false });
+  res.json({ ok: true, restored, savedFirst: path.basename(before) });
+});
+// Daily copy (run hourly by jobs.js): one a day, the newest 14 kept.
+async function dailyBackup() {
+  const dir = BACKUP_DIR(); const today = new Date().toISOString().slice(0, 10);
+  let names = []; try { names = fs.readdirSync(dir); } catch (e) { names = []; }
+  if (!names.some((n) => n.startsWith('daily-' + today))) await snapshot(getDb(), 'daily');
+  const daily = fs.readdirSync(dir).filter((n) => /^daily-.*\.json\.gz$/.test(n)).sort().reverse();
+  for (const n of daily.slice(14)) fs.unlinkSync(path.join(dir, n));
+}
+r.dailyBackup = dailyBackup;
 module.exports = r;

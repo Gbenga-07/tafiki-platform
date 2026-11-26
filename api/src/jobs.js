@@ -7,5 +7,6 @@ function start() {
   every(60 * 1000, ops.autoAdvance, 'autoAdvance');
   every(5 * 60 * 1000, ops.releaseRestocks, 'releaseRestocks');
   every(15 * 60 * 1000, ops.auditReminders, 'auditReminders');
+  const daily = require('./routes/adminData').dailyBackup; every(60 * 60 * 1000, daily, 'dailyBackup'); setTimeout(() => daily().catch((e) => console.error('job dailyBackup', e.message)), 30 * 1000);
 }
 module.exports = { start };
