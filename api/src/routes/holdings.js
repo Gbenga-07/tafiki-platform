@@ -129,7 +129,7 @@ r.post('/:id/transfer-sent', async (req, res) => {
   const p = await db('payments').where({ holding_id: h.id, provider: 'transfer', status: 'initialized' }).orderBy('created_at', 'desc').first();
   if (!p) throw bad('Start a bank transfer first.');
   await db('payments').where({ id: p.id }).update({ status: 'pending_review' });
-  await db('holdings').where({ id: h.id }).update({ status: 'confirming', reserved_until: null });
+  await db('holdings').where({ id: h.id }).update({ status: 'confirming', reserved_until: null, method: 'transfer' }); // a member may have opened Flutterwave first: record how they actually paid
   await activity.log({ type: 'user', id: req.user.id }, 'units.transfer_reported', { type: 'holding', id: h.id }, { reference: p.reference });
   await sendEmail({ to: req.user.email, name: req.user.name.split(' ')[0], category: 'units', ref: h.ref, subject: `We are confirming your transfer for ${h.ref}`, title: 'We are confirming your transfer',
     lead: `Thank you. We will match your transfer of **${K.N(p.amount)}** in the escrow account, usually within one working day.`,

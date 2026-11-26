@@ -53,6 +53,15 @@ test('bank transfer: units held 24 hours with escrow details emailed; reported t
   const cert = await db('emails').where({ to_email: 'ada@example.com' }).where('subject', 'like', `Your Certificate of Stake%`).orderBy('created_at', 'desc').first(); assert.ok(cert && cert.attach);
 });
 
+test('member opens Flutterwave, then pays by bank transfer: the console shows Bank transfer', async () => {
+  const r = await buy(1, 'transfer'); const id = r.body.holding.id;
+  assert.equal((await a.post('/api/holdings/' + id + '/pay').send({ method: 'flutterwave' })).status, 200);
+  assert.equal((await db('holdings').where({ id }).first()).method, 'flutterwave');
+  assert.equal((await a.post('/api/holdings/' + id + '/transfer-sent')).status, 200);
+  const h = await db('holdings').where({ id }).first(); assert.equal(h.method, 'transfer'); assert.equal(h.status, 'confirming');
+  await db('holdings').where({ id }).update({ status: 'cancelled' });
+});
+
 test('bank transfer never reported: released automatically after 24 hours with an email', async () => {
   const r = await buy(1, 'transfer'); const id = r.body.holding.id;
   await db('holdings').where({ id }).update({ reserved_until: new Date(Date.now() - 1000) }); await db('payments').where({ holding_id: id }).update({ created_at: new Date(Date.now() - 25 * 3600e3) });
