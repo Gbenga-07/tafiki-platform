@@ -622,6 +622,20 @@ img.fcw{height:.82em;width:auto;display:inline-block;vertical-align:-.04em}
 .store-card.clickable:hover{transform:translateY(-3px);box-shadow:0 18px 36px -20px rgba(20,40,10,.45)}
 @media(max-width:1000px){.fs-item{flex-basis:calc((100% - 18px)/2)}}
 @media(max-width:620px){.fs-item{flex-basis:86%}}
+/* funded marts: compact cards, about 30% smaller */
+.fs-mini .fs-item{flex-basis:calc((100% - 54px)/4)}
+.mini-card{padding:14px 14px 12px;gap:9px}
+.mini-card h3{font-size:15px;line-height:1.15}
+.mini-card .loc-l{font-size:11.5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mini-card .chip{font-size:10.5px;padding:2px 7px;flex:none}
+.mini-card .slots{width:62%;gap:3px}
+.mini-card .slots i{border-radius:3px}
+.mini-card .bar{height:5px}
+.mini-card .mini-f{gap:8px;flex-wrap:nowrap;font-size:11.5px}
+.mini-card .mini-f>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mini-card .btn.sm{padding:5px 12px;font-size:12px;min-height:0;flex:none}
+@media(max-width:1000px){.fs-mini .fs-item{flex-basis:calc((100% - 36px)/3)}}
+@media(max-width:620px){.fs-mini .fs-item{flex-basis:72%}}
 
 /* Cormorant Garamond sizing: slightly larger to match visual weight */
 .stat b,.figs b,.numgrid b,.pk-n b,.pk-ret b,.re-t b,.re-big b,.re-legend .amt b,.st-row .amt b,.kpi .v,.sum b,.re-mini b,.fs-stats b{font-family:var(--num);font-weight:700;letter-spacing:-.005em;font-feature-settings:"lnum" 1}
@@ -2588,9 +2602,14 @@ function storeCard(s){const t=taken(s),f=freeSlots(s),open=s.stage==='funding'&&
  ${slotGrid(s,route().startsWith('me')&&S.session&&S.session.userId)}
  <div><div class="row between small" style="margin-bottom:6px"><span><b class="num">${t}</b> of 40 units taken</span><span class="muted">${s.stage==='trading'?'Opened '+fd(s.opened):'Opens '+esc(s.target)}</span></div><div class="bar"><i style="width:${t/40*100}%"></i></div></div>
  <div class="row between"><span class="small muted">${s.stage==='trading'?'Fully funded · trading':f+' units open'}</span>${open?`<span class="btn dark sm">Buy units</span>`:`<a class="btn ghost sm" href="#store-${s.id}">View mart</a>`}</div></div>`;}
+function miniCard(s){const t=taken(s);return `<div class="card store-card mini-card">
+ <div class="top"><div style="min-width:0"><h3>${fcName(s)}</h3><p class="muted loc-l">${esc(s.area)}, ${esc(s.city)}</p></div>${stageChip(s)}</div>
+ ${slotGrid(s,route().startsWith('me')&&S.session&&S.session.userId)}
+ <div class="bar"><i style="width:${t/40*100}%"></i></div>
+ <div class="row between mini-f"><span class="muted"><b class="num">${t}</b>/40 units · ${s.stage==='trading'?'opened '+fd(s.opened):'opens '+esc(s.target)}</span><a class="btn ghost sm" href="#store-${s.id}">View</a></div></div>`;}
 function fundedSlides(id){const fs=S.stores.filter(s=>s.stage==='trading');if(!fs.length)return '';
  return `<div class="stack" style="gap:16px;margin-top:28px"><div class="row between" style="align-items:flex-end"><div><span class="eyebrow">Fully funded</span><h2 style="font-size:28px;margin-top:6px">Marts already trading</h2></div><span class="small muted">${fs.length} marts</span></div>
- <div class="fslides" id="${id}"><div class="fs-track">${fs.map(s=>`<div class="fs-item">${storeCard(s)}</div>`).join('')}</div>
+ <div class="fslides fs-mini" id="${id}"><div class="fs-track">${fs.map(s=>`<div class="fs-item">${miniCard(s)}</div>`).join('')}</div>
  ${fs.length>1?`<div class="fs-nav"><button class="fs-btn" data-a="slide" data-id="${id}" data-d="-1" aria-label="Previous mart">‹</button><div class="fs-dots">${fs.map((_,i)=>`<i class="${i?'':'on'}"></i>`).join('')}</div><button class="fs-btn" data-a="slide" data-id="${id}" data-d="1" aria-label="Next mart">›</button></div>`:''}</div></div>`;}
 
 function pStore(s){
