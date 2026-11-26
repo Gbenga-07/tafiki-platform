@@ -43,6 +43,7 @@ const BLOCK = {
   code: (b) => `<table role="presentation" style="${T};margin:4px 0 16px"><tr><td style="text-align:center;background:${C.soft};border:1px dashed #BFD3A8;border-radius:12px;padding:16px"><div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${C.mid}">${esc(b.title || 'Your code')}</div><div style="font:700 30px/1.2 'Courier New',monospace;letter-spacing:.28em;color:${C.dark};margin:6px 0 4px">${esc(b.code)}</div>${b.sub ? `<div style="font-size:12px;color:${C.mute}">${esc(b.sub)}</div>` : ''}</td></tr></table>`,
   note: (b) => { const t = { warn: ['#FFF8EB', '#E2B85C', C.warn], bad: ['#FDF3F1', '#DE9A8D', C.bad], info: ['#FAFCF7', '#A5C783', C.mid], ok: ['#FAFCF7', '#A5C783', C.mid] }[b.tone || 'info'];
     return `<table role="presentation" style="${T};margin:0 0 14px"><tr><td style="background:${t[0]};border-left:3px solid ${t[1]};border-radius:0 8px 8px 0;padding:9px 13px;font-size:12.5px;color:${t[2]};line-height:1.55">${b.title ? `<b>${esc(b.title)}.</b> ` : ''}${rich(b.text)}</td></tr></table>`; },
+  link: (b) => `<table role="presentation" style="${T};margin:4px 0 16px"><tr><td style="text-align:center;background:${C.soft};border:1px dashed #BFD3A8;border-radius:12px;padding:18px 16px"><div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${C.mid}">${esc(b.title || 'Your link')}</div><div style="margin:8px 0 6px"><a href="${esc(b.url)}" style="display:inline-block;background:${C.dark};color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;border-radius:999px;padding:12px 26px">${esc(b.label)}</a></div>${b.sub ? `<div style="font-size:12px;color:${C.mute}">${esc(b.sub)}</div>` : ''}</td></tr></table>`,
   button: (b) => `<p style="margin:2px 0 14px;font-size:14px"><a href="${esc(b.url)}" style="color:${C.dark};font-weight:700;text-decoration:underline">${esc(b.label)} &rarr;</a></p>`,
 };
 function heroHtml(h) {
@@ -79,6 +80,7 @@ function layout(m) {
 function textVersion(m) {
   const out = [m.title || '', `Hello ${m.name || 'there'},`, plain(m.lead || ''), m.hero ? `${m.hero.label}: ${m.hero.value}${m.hero.sub ? ' (' + plain(m.hero.sub) + ')' : ''}` : '', ...(m.paragraphs || []).map(plain)];
   for (const b of (m.blocks || []).filter(Boolean)) {
+    if (b.type === 'link') out.push(`${(b.title || 'Your link').toUpperCase()}: ${b.url}${b.sub ? ' (' + b.sub + ')' : ''}`);
     if (b.type === 'code') out.push(`${(b.title || 'Your code').toUpperCase()}: ${b.code}${b.sub ? ' (' + b.sub + ')' : ''}`);
     else if (b.type === 'note') out.push((b.title ? b.title + ': ' : '') + plain(b.text));
     else if (b.type === 'button') out.push(`${b.label}: ${b.url}`);

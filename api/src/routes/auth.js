@@ -51,29 +51,40 @@ r.post('/register', async (req, res) => {
     password_hash: await pw.hash(d.password), bank_name: d.bank ? d.bank.name : null, bank_account: d.bank ? d.bank.account : null, bank_account_name: d.bank ? d.bank.accountName : null,
     coop_no: coopNo, coop_agreed_at: new Date(), terms_version: d.termsVersion || config.termsVersion });
   await activity.log({ type: 'user', id }, 'member.registered', { type: 'user', id }, { role: d.role, coopNo });
-  const { value } = await codes.issue('email_verify', 'user', id, { minutes: 30 });
-  await sendEmail({ to: email, name: d.firstName, category: 'account', subject: 'Confirm your email for Tafiki', ref: id, title: 'Confirm your email',
-    lead: `Welcome to Tafiki. Your email confirmation code is ${value}. Enter it on the sign-up page to confirm this address.`,
-    blocks: [{ type: 'code', title: 'Email confirmation code', code: value, sub: 'Expires in 30 minutes' }, coopNo ? { type: 'kv', title: 'Your membership', rows: [['FOODCORE membership number', coopNo]] } : null],
-    next: ['Enter the code to confirm your email.', 'Complete your identity check, then you can take part in member offers.'], help: 'If you did not sign up for Tafiki, you can ignore this email.' });
+  await sendConfirmLink({ id, email, name: d.firstName, coopNo }, true);
   try { await require('../lib/accounts').welcome(await db('users').where({ id }).first()); } catch (e) { console.error(e); }
   await startSession(res, req, 'user', id, config.memberSessionHours * 60);
   const u = await db('users').where({ id }).first();
   res.status(201).json({ user: present.user(u) });
 });
 
-r.post('/verify-email', requireUser, async (req, res) => {
-  const out = await codes.check('email_verify', 'user', req.user.id, req.body && req.body.code);
-  if (!out.ok) throw bad(out.reason === 'wrong' ? 'That code is not correct.' : 'That code has expired. Request a new one.');
-  const was = !!req.user.email_verified;
-  await getDb()('users').where({ id: req.user.id }).update({ email_verified: true, updated_at: new Date() });
-  if (!was) await require('../lib/accounts').activated(req.user);
-  res.json({ ok: true });
+// Email confirmation by link: one tap confirms the address and signs the member in (the link works once, for 24 hours).
+async function sendConfirmLink(u, first) {
+  const { value } = await codes.issue('email_link', 'user', u.id, { minutes: 24 * 60, token: true });
+  const url = `${config.appUrl}/#confirm?t=${value}`;
+  await sendEmail({ to: u.email, name: u.name, category: 'account', subject: first ? 'Confirm your email for Tafiki' : 'Your new Tafiki confirmation link', ref: u.id, title: 'Confirm your email',
+    lead: first ? 'Welcome to Tafiki. Tap the button below to confirm your email address. It also signs you straight in to your dashboard.' : 'Here is your new confirmation link. Tap it to confirm your email and sign in. Earlier links no longer work.',
+    blocks: [{ type: 'link', title: 'Confirm your email', label: 'Confirm and sign in', url, sub: 'Works once · expires in 24 hours' }, u.coopNo ? { type: 'kv', title: 'Your membership', rows: [['FOODCORE membership number', u.coopNo]] } : null],
+    next: first ? ['Tap the button to confirm your email and open your dashboard.', 'Complete your identity check, then you can take part in member offers.'] : null,
+    help: first ? 'If you did not sign up for Tafiki, you can ignore this email.' : false });
+}
+r.post('/confirm-email', async (req, res) => {
+  const row = await codes.byToken('email_link', req.body && req.body.token);
+  if (!row) throw bad('This link has expired or has already been used. Sign in and we can send you a new one.');
+  await codes.consume(row.id);
+  const db = getDb(); const u = await db('users').where({ id: row.subject_id }).first();
+  if (!u || u.status === 'closed') throw bad('This account is not available.');
+  if (u.status === 'suspended') throw new HttpError(403, 'This account is suspended. Contact support@tafiki.com.');
+  const was = !!u.email_verified;
+  await db('users').where({ id: u.id }).update({ email_verified: true, updated_at: new Date() });
+  if (!was) await require('../lib/accounts').activated(u);
+  await activity.log({ type: 'user', id: u.id }, 'member.email_confirmed', { type: 'user', id: u.id });
+  await startSession(res, req, 'user', u.id, config.memberSessionHours * 60);
+  res.json({ user: present.user(await db('users').where({ id: u.id }).first()) });
 });
 r.post('/verify-email/resend', requireUser, async (req, res) => {
-  const { value } = await codes.issue('email_verify', 'user', req.user.id, { minutes: 30 });
-  await sendEmail({ to: req.user.email, name: req.user.name.split(' ')[0], category: 'account', subject: 'Your Tafiki confirmation code', ref: req.user.id, title: 'Your new confirmation code',
-    lead: `Your email confirmation code is ${value}.`, blocks: [{ type: 'code', title: 'Email confirmation code', code: value, sub: 'Expires in 30 minutes · earlier codes no longer work' }], help: false });
+  if (req.user.email_verified) return res.json({ ok: true, alreadyConfirmed: true });
+  await sendConfirmLink({ id: req.user.id, email: req.user.email, name: req.user.name.split(' ')[0] }, false);
   res.json({ ok: true });
 });
 

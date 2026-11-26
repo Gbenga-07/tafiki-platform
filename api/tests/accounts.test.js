@@ -18,10 +18,16 @@ test('sign-up sends a welcome email with the account details and membership numb
   const u = await db('users').where({ id: uid }).first();
   assert.match(w[0].body_text, new RegExp('Membership number: ' + u.coop_no)); assert.equal(w[0].category, 'account');
 });
-test('confirming the email sends "account is active" once', async () => {
-  const { codes } = { codes: require('../src/lib/codes') }; const { value } = await codes.issue('email_verify', 'user', uid, { minutes: 30 });
-  assert.equal((await a.post('/api/auth/verify-email').send({ code: value })).status, 200);
+test('the confirmation link confirms the email, signs the member in once, and sends "account is active" once', async () => {
+  const m = await mails('bola@example.com', 'Confirm your email for Tafiki'); assert.equal(m.length, 1);
+  const t = m[0].body_text.match(/#confirm\?t=([\w-]+)/)[1]; assert.ok(t.length > 20); assert.doesNotMatch(m[0].body_text, /CONFIRMATION CODE/);
+  const fresh = agent(app); assert.equal((await fresh.get('/api/me')).status, 401);
+  const c = await fresh.post('/api/auth/confirm-email').send({ token: t }); assert.equal(c.status, 200, JSON.stringify(c.body)); assert.equal(c.body.user.emailVerified, true);
+  assert.equal((await fresh.get('/api/me')).status, 200, 'signed in by the link');
+  assert.equal((await agent(app).post('/api/auth/confirm-email').send({ token: t })).status, 400, 'works once');
+  assert.equal((await agent(app).post('/api/auth/confirm-email').send({ token: 'nope' })).status, 400);
   assert.equal((await mails('bola@example.com', 'Your Tafiki account is active')).length, 1);
+  assert.equal((await a.post('/api/auth/verify-email/resend')).body.alreadyConfirmed, true);
 });
 test('suspend and reactivate each send an email; a suspended member cannot sign in', async () => {
   assert.equal((await sup.post('/api/admin/users/' + uid + '/status').send({ status: 'suspended', reason: 'Checking a document' })).status, 200);
