@@ -1,0 +1,17 @@
+{
+  "id": "/console",
+  "name": "Tafiki Console",
+  "short_name": "Tafiki Admin",
+  "description": "Tafiki admin console for FOODCORE Cooperative Limited.",
+  "start_url": "/console",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#20460F",
+  "theme_color": "#20460F",
+  "icons": [
+    { "src": "/img/app/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/img/app/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/img/app/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

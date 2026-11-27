@@ -2232,6 +2232,10 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
 .ad-why{display:block;flex:1 1 100%;white-space:normal;margin-top:8px;font-size:12px;line-height:1.4;color:#8A6A1F;max-width:46ch}
 .pay-opt{align-items:flex-start;gap:12px}.pay-opt .pay-dot{width:18px;height:18px;border-radius:50%;border:2px solid #B9C9A8;flex:none;margin-top:2px;box-sizing:border-box}.pay-opt.on .pay-dot{border:5px solid #2B5A12}.pay-tag{white-space:nowrap;font-style:normal;font-size:10.5px;font-weight:700;letter-spacing:.04em;background:#EAF4E0;color:#2B5A12;border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:2px}
 
+.app-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom));z-index:9000;display:flex;align-items:center;gap:12px;width:min(520px,calc(100% - 24px));box-sizing:border-box;background:#20460F;color:#F7F5EC;border-radius:16px;padding:10px 10px 10px 12px;box-shadow:0 12px 32px rgba(15,35,5,.35);font-family:"Figtree",system-ui,sans-serif}
+.app-bar img{width:40px;height:40px;border-radius:10px;flex:none}.app-bar>div{flex:1;min-width:0}.app-bar b{display:block;font-size:14px}.app-bar span{display:block;font-size:12.5px;color:#D6E6C4;line-height:1.35}.app-bar span b{display:inline;font-size:inherit;color:#fff}.app-bar svg{width:15px;height:15px;vertical-align:-2px}
+.app-bar .go{border:0;border-radius:999px;background:#F7F5EC;color:#20460F;font:700 13px "Figtree",sans-serif;padding:9px 16px;cursor:pointer;flex:none}.app-bar .x{border:0;background:none;color:#BFD8A4;font-size:15px;padding:6px 8px;cursor:pointer;flex:none}
+.app-off{position:fixed;left:0;right:0;top:0;z-index:9001;background:#8A1F1F;color:#fff;text-align:center;font:500 13.5px "Figtree",system-ui,sans-serif;padding:calc(8px + env(safe-area-inset-top)) 14px 8px}
 @media(max-width:420px){.ai-topr{flex-wrap:wrap!important;justify-content:flex-start!important;max-width:100%}.ai-topr>*{flex:none!important}}
 @media(max-width:800px){.lg .lg-f{display:flex!important;flex-wrap:wrap;justify-content:flex-end;gap:4px 14px}.lg .lg-f>span:first-child{flex:1 1 100%}}
 </style>
@@ -2410,6 +2414,41 @@ if(CLEAN){const h=location.hash.slice(1),p=location.pathname.replace(/\/+$/,'');
 const route=()=>(CLEAN?(location.hash.slice(1)||window.__R):location.hash.slice(1))||'home';
 function go(r){if(route()===r)render();else location.hash=r;}
 window.addEventListener('hashchange',()=>{if(window.navTrack)navTrack();document.getElementById('modal').innerHTML='';render();window.scrollTo(0,0);});
+/* ---------- Installable console app (tafiki.com/console) ----------
+   Adds the app icon, name and manifest on console pages, registers a service worker that only supplies an offline page
+   (it never caches figures), offers Install on Android/desktop and Add to Home Screen steps on iPhone, and shows an
+   offline notice. Only on the live site: the demo preview cannot be installed. */
+(function(){
+ const onConsole=()=>/^(admin|console)/.test(route())||/^\/(console|control)/.test(location.pathname);
+ const ua=navigator.userAgent,isIOS=/iPhone|iPad|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+ const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+ const add=(tag,a)=>{const e=document.createElement(tag);for(const k in a)e.setAttribute(k,a[k]);document.head.appendChild(e);return e;};
+ const ls=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v);}catch(e){return null;}};
+ let deferred=null;
+ function head(){if(!onConsole()||document.getElementById('app-manifest'))return;
+  add('link',{id:'app-manifest',rel:'manifest',href:'/console-manifest.json'});add('link',{rel:'apple-touch-icon',href:'/img/app/apple-180.png'});
+  add('meta',{name:'apple-mobile-web-app-capable',content:'yes'});add('meta',{name:'mobile-web-app-capable',content:'yes'});
+  add('meta',{name:'apple-mobile-web-app-title',content:'Tafiki Admin'});add('meta',{name:'apple-mobile-web-app-status-bar-style',content:'black'});
+  add('meta',{name:'theme-color',content:'#20460F'});}
+ function bar(){const old=document.getElementById('app-inst');
+  const show=onConsole()&&!standalone()&&ls('tfk-app-hide')!=='1'&&(deferred||(isIOS&&/Safari/.test(ua)&&!/CriOS|FxiOS|EdgiOS/.test(ua)));
+  if(!show){if(old)old.remove();return;}if(old)return;
+  const d=document.createElement('div');d.id='app-inst';d.className='app-bar';
+  d.innerHTML=`<img src="/img/app/icon-192.png" alt=""><div><b>Install Tafiki Admin</b><span>${deferred?'Open the console from your home screen or desktop, full screen.':'Tap Share <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> then <b>Add to Home Screen</b>.'}</span></div>${deferred?'<button class="go" type="button">Install</button>':''}<button class="x" type="button" aria-label="Hide">✕</button>`;
+  d.querySelector('.x').onclick=()=>{ls('tfk-app-hide','1');d.remove();};
+  const g=d.querySelector('.go');if(g)g.onclick=async()=>{deferred.prompt();try{await deferred.userChoice;}catch(e){}deferred=null;d.remove();};
+  document.body.appendChild(d);}
+ function net(){const old=document.getElementById('app-off');
+  if(navigator.onLine||!onConsole()){if(old){old.remove();try{render();}catch(e){}}return;}
+  if(old)return;const d=document.createElement('div');d.id='app-off';d.className='app-off';d.setAttribute('role','status');
+  d.innerHTML='<b>You’re offline.</b> Reconnect to continue. Figures are paused until you’re back online.';document.body.appendChild(d);}
+ if(!CLEAN)return;
+ head();window.addEventListener('hashchange',()=>{head();bar();net();});
+ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;bar();});
+ window.addEventListener('appinstalled',()=>{deferred=null;bar();});
+ window.addEventListener('online',net);window.addEventListener('offline',net);
+ window.addEventListener('load',()=>{bar();net();if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});});
+})();
 
 function protoBar(){
   const r=route(),area=r.startsWith('admin')?'admin':r.startsWith('me')?'investor':r.startsWith('shop')?'retailer':'public';
