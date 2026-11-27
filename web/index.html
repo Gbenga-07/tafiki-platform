@@ -2242,6 +2242,7 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
 .app-steps .n{font-size:13.5px;color:#4A5C40;margin:0 0 12px;line-height:1.45}.app-steps ol{margin:0 0 12px;padding-left:22px;font-size:15px;line-height:1.5}.app-steps li{margin:0 0 10px}
 .app-steps i{font-style:normal;display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:24px;padding:0 5px;border-radius:7px;background:#EEF5E6;color:#1D4107;font-weight:700;vertical-align:-3px}.app-steps i svg{width:16px;height:16px}
 .app-steps .ok{width:100%;border:0;border-radius:999px;background:#20460F;color:#fff;font:700 15px "Figtree",sans-serif;padding:13px;cursor:pointer}
+@media(max-width:900px){.app-bar.up{bottom:calc(92px + env(safe-area-inset-bottom))}}
 .app-off{position:fixed;left:0;right:0;top:0;z-index:9001;background:#8A1F1F;color:#fff;text-align:center;font:500 13.5px "Figtree",system-ui,sans-serif;padding:calc(8px + env(safe-area-inset-top)) 14px 8px}
 @media(max-width:420px){.ai-topr{flex-wrap:wrap!important;justify-content:flex-start!important;max-width:100%}.ai-topr>*{flex:none!important}}
 @media(max-width:800px){.lg .lg-f{display:flex!important;flex-wrap:wrap;justify-content:flex-end;gap:4px 14px}.lg .lg-f>span:first-child{flex:1 1 100%}}
@@ -2432,22 +2433,27 @@ window.addEventListener('hashchange',()=>{if(window.navTrack)navTrack();document
  const add=(tag,a)=>{const e=document.createElement(tag);for(const k in a)e.setAttribute(k,a[k]);document.head.appendChild(e);return e;};
  const ls=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v);}catch(e){return null;}};
  let deferred=null;
- function head(){if(!onConsole()||document.getElementById('app-manifest'))return;
-  add('link',{id:'app-manifest',rel:'manifest',href:'/console-manifest.json'});add('link',{rel:'apple-touch-icon',href:'/img/app/apple-180.png'});
-  add('meta',{name:'apple-mobile-web-app-capable',content:'yes'});add('meta',{name:'mobile-web-app-capable',content:'yes'});
-  add('meta',{name:'apple-mobile-web-app-title',content:'Tafiki Admin'});add('meta',{name:'apple-mobile-web-app-status-bar-style',content:'black'});
-  add('meta',{name:'theme-color',content:'#20460F'});}
+ const APPS={console:{m:'/console-manifest.json',i:'/img/app/apple-180.png',t:'Tafiki Admin',big:'/img/app/icon-192.png',name:'Tafiki Admin',sub:'Open the console from your home screen or desktop, full screen.'},
+  member:{m:'/app-manifest.json',i:'/img/app/member-apple-180.png',t:'Tafiki',big:'/img/app/member-192.png',name:'Tafiki',sub:'Open your account from your home screen, full screen.'}};
+ const onPortal=()=>/^(me|shop)/.test(route());
+ const app=()=>onConsole()?APPS.console:APPS.member;
+ const setTag=(id,tag,a)=>{let e=document.getElementById(id);if(!e)e=add(tag,{id});for(const k in a)e.setAttribute(k,a[k]);};
+ function head(){const a=app();
+  setTag('app-manifest','link',{rel:'manifest',href:a.m});setTag('app-icon','link',{rel:'apple-touch-icon',href:a.i});
+  setTag('app-cap','meta',{name:'apple-mobile-web-app-capable',content:'yes'});setTag('app-cap2','meta',{name:'mobile-web-app-capable',content:'yes'});
+  setTag('app-title','meta',{name:'apple-mobile-web-app-title',content:a.t});setTag('app-bar-st','meta',{name:'apple-mobile-web-app-status-bar-style',content:'black'});
+  setTag('app-theme','meta',{name:'theme-color',content:'#20460F'});}
  function bar(){const old=document.getElementById('app-inst');
-  const show=onConsole()&&!standalone()&&ls('tfk-app-hide')!=='1'&&(deferred||(isIOS&&/Safari/.test(ua)&&!/CriOS|FxiOS|EdgiOS/.test(ua)));
-  if(!show){if(old)old.remove();return;}if(old)return;
+  const show=(onConsole()||onPortal()||/^(login|register|verify)/.test(route()))&&!standalone()&&ls('tfk-app-hide-'+(onConsole()?'c':'m'))!=='1'&&(deferred||(isIOS&&/Safari/.test(ua)&&!/CriOS|FxiOS|EdgiOS/.test(ua)));
+  if(!show){if(old)old.remove();return;}const A=app();if(old){if(old.dataset.app===A.t)return;old.remove();}
   const d=document.createElement('div');d.id='app-inst';d.className='app-bar';
-  d.innerHTML=`<img src="/img/app/icon-192.png" alt=""><div><b>Install Tafiki Admin</b><span>${deferred?'Open the console from your home screen or desktop, full screen.':'Put the console on your home screen. It takes 4 taps.'}</span></div><button class="go" type="button">${deferred?'Install':'Show me'}</button><button class="x" type="button" aria-label="Hide">✕</button>`;
-  d.querySelector('.x').onclick=()=>{ls('tfk-app-hide','1');d.remove();};
+  d.dataset.app=A.t;if(onPortal())d.classList.add('up');d.innerHTML=`<img src="${A.big}" alt=""><div><b>Install ${A.name}</b><span>${deferred?A.sub:'Add it to your home screen. It takes 4 taps.'}</span></div><button class="go" type="button">${deferred?'Install':'Show me'}</button><button class="x" type="button" aria-label="Hide">✕</button>`;
+  d.querySelector('.x').onclick=()=>{ls('tfk-app-hide-'+(onConsole()?'c':'m'),'1');d.remove();};
   const g=d.querySelector('.go');g.onclick=async()=>{if(!deferred){steps();return;}deferred.prompt();try{await deferred.userChoice;}catch(e){}deferred=null;d.remove();};d.querySelector('div').onclick=()=>{if(!deferred)steps();};
   document.body.appendChild(d);}
- function steps(){if(document.getElementById('app-steps'))return;const w=document.createElement('div');w.id='app-steps';w.className='app-steps';w.innerHTML=`<div class="sh" role="dialog" aria-label="Install Tafiki Admin"><img src="/img/app/icon-192.png" alt=""><h3>Add Tafiki Admin to your Home Screen</h3><p class="n">Apple only lets you add apps from Safari’s own menu, so the button can’t do it for you. Follow these steps:</p><ol><li>Tap the <b>menu button</b> in Safari’s address bar: <i>≡</i> or <i>•••</i> (on older iPhones, the Share button <i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></i> at the bottom).</li><li>Tap <b>Share</b> <i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></i>.</li><li>Scroll down and tap <b>Add to Home Screen</b> <i>⊞</i>.</li><li>Make sure <b>Open as Web App</b> is on, then tap <b>Add</b>.</li></ol><p class="n">The Tafiki Admin icon then appears on your Home Screen and opens the console full screen.</p><button type="button" class="ok">Got it</button></div>`;w.onclick=e=>{if(e.target===w||e.target.classList.contains('ok'))w.remove();};document.body.appendChild(w);}
+ function steps(){if(document.getElementById('app-steps'))return;const w=document.createElement('div');w.id='app-steps';w.className='app-steps';const A=app();w.innerHTML=`<div class="sh" role="dialog" aria-label="Install ${A.name}"><img src="${A.big}" alt=""><h3>Add ${A.name} to your Home Screen</h3><p class="n">Apple only lets you add apps from Safari’s own menu, so the button can’t do it for you. Follow these steps:</p><ol><li>Tap the <b>menu button</b> in Safari’s address bar: <i>≡</i> or <i>•••</i> (on older iPhones, the Share button <i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></i> at the bottom).</li><li>Tap <b>Share</b> <i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></i>.</li><li>Scroll down and tap <b>Add to Home Screen</b> <i>⊞</i>.</li><li>Make sure <b>Open as Web App</b> is on, then tap <b>Add</b>.</li></ol><p class="n">The ${A.name} icon then appears on your Home Screen and opens ${A===APPS.console?"the console":"your account"} full screen.</p><button type="button" class="ok">Got it</button></div>`;w.onclick=e=>{if(e.target===w||e.target.classList.contains('ok'))w.remove();};document.body.appendChild(w);}
  function net(){const old=document.getElementById('app-off');
-  if(navigator.onLine||!onConsole()){if(old){old.remove();try{render();}catch(e){}}return;}
+  if(navigator.onLine||!(onConsole()||onPortal())){if(old){old.remove();try{render();}catch(e){}}return;}
   if(old)return;const d=document.createElement('div');d.id='app-off';d.className='app-off';d.setAttribute('role','status');
   d.innerHTML='<b>You’re offline.</b> Reconnect to continue. Figures are paused until you’re back online.';document.body.appendChild(d);}
  if(!CLEAN)return;
@@ -2455,7 +2461,7 @@ window.addEventListener('hashchange',()=>{if(window.navTrack)navTrack();document
  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;bar();});
  window.addEventListener('appinstalled',()=>{deferred=null;bar();});
  window.addEventListener('online',net);window.addEventListener('offline',net);
- window.addEventListener('load',()=>{bar();net();if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});});
+ window.addEventListener('load',()=>{if(standalone()&&!onConsole()&&route()==='home'){setTimeout(()=>{let u=null;try{u=S.session&&me();}catch(e){}if(u&&u.role==='retailer')go('shop');else if(u&&u.role==='investor')go('me');else go('login');},400);}bar();net();if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});});
 })();
 
 function protoBar(){

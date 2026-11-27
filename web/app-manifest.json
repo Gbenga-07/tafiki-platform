@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Tafiki",
+  "short_name": "Tafiki",
+  "description": "Your Tafiki account with FOODCORE Cooperative Limited.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FFFFFF",
+  "theme_color": "#20460F",
+  "icons": [
+    { "src": "/img/app/member-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/img/app/member-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/img/app/member-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
