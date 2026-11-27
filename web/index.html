@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="tafiki-api" content="">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta id="app-theme" name="theme-color" content="#FFFFFF">
+<style>html,body{background:#fff}</style>
 <title>Tafiki Investor Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2446,8 +2449,11 @@ window.addEventListener('hashchange',()=>{if(window.navTrack)navTrack();document
  function head(){const a=app();
   setTag('app-manifest','link',{rel:'manifest',href:a.m});setTag('app-icon','link',{rel:'apple-touch-icon',href:a.i});
   setTag('app-cap','meta',{name:'apple-mobile-web-app-capable',content:'yes'});setTag('app-cap2','meta',{name:'mobile-web-app-capable',content:'yes'});
-  setTag('app-title','meta',{name:'apple-mobile-web-app-title',content:a.t});setTag('app-bar-st','meta',{name:'apple-mobile-web-app-status-bar-style',content:'black'});
-  setTag('app-theme','meta',{name:'theme-color',content:'#20460F'});}
+  setTag('app-title','meta',{name:'apple-mobile-web-app-title',content:a.t});setTag('app-bar-st','meta',{name:'apple-mobile-web-app-status-bar-style',content:a===APPS.console?'black':'default'});
+  setTag('app-theme','meta',{name:'theme-color',content:a===APPS.console?'#20460F':'#FFFFFF'});
+  /* iPhone launch screens, so the home-screen app opens on the Tafiki logo instead of a black screen */
+  const k=a===APPS.console?'c':'m';SPLASH.forEach(([w,h,d],i)=>setTag('app-sp'+i,'link',{rel:'apple-touch-startup-image',href:'/img/app/splash/'+k+'-'+w*d+'x'+h*d+'.png',media:`(device-width: ${w}px) and (device-height: ${h}px) and (-webkit-device-pixel-ratio: ${d}) and (orientation: portrait)`}));}
+ const SPLASH=[[440,956,3],[430,932,3],[428,926,3],[420,912,3],[414,896,3],[414,896,2],[402,874,3],[393,852,3],[390,844,3],[375,812,3],[375,667,2]];
  function bar(){const old=document.getElementById('app-inst');
   const show=(onConsole()||onPortal()||/^(login|register|verify)/.test(route()))&&!standalone()&&ls('tfk-app-hide-'+(onConsole()?'c':'m'))!=='1'&&(deferred||(isIOS&&/Safari/.test(ua)&&!/CriOS|FxiOS|EdgiOS/.test(ua)));
   if(!show){if(old)old.remove();return;}const A=app();if(old){if(old.dataset.app===A.t)return;old.remove();}
