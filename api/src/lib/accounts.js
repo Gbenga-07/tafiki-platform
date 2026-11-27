@@ -54,13 +54,15 @@ async function blockers(u) {
   }
   return out;
 }
-async function close(u, actor, reason) {
+// Closing (or deleting, by an admin) moves the account to Inactive Accounts. Nothing is erased: all records stay.
+async function close(u, actor, reason, opts = {}) {
   const db = getDb(); const why = await blockers(u);
-  if (why.length) throw bad(why.join(' '));
+  if (why.length) throw bad(why.join(' ').replace(/\bYou still hold\b/, opts.byAdmin ? 'This member still holds' : 'You still hold').replace(/\bYour wallet\b/, opts.byAdmin ? 'Their wallet' : 'Your wallet'));
   await db('holdings').where({ user_id: u.id, status: 'unpaid' }).update({ status: 'cancelled', cancel_reason: 'Account closed' });
-  if (!(await db('users').where({ id: u.id }).whereNot({ status: 'closed' }).update({ status: 'closed', updated_at: new Date() }))) throw bad('This account is already closed.');
+  const by = actor.type === 'admin' ? ((await db('admins').where({ id: actor.id }).first()) || {}).name || 'Tafiki' : 'Member';
+  if (!(await db('users').where({ id: u.id }).whereNot({ status: 'closed' }).update({ status: 'closed', closed_at: new Date(), closed_reason: reason || null, closed_by: by, deleted: !!opts.deleted, updated_at: new Date() }))) throw bad('This account is already closed.');
   await revokeAll('user', u.id);
-  await activity.log(actor, 'member.closed', { type: 'user', id: u.id }, { reason: reason || null });
+  await activity.log(actor, opts.deleted ? 'member.deleted' : 'member.closed', { type: 'user', id: u.id }, { reason: reason || null });
   await sendEmail({ to: u.email, name: first(u), category: 'account', ref: u.id, subject: 'Your Tafiki account is closed', title: 'Your account is closed',
     lead: `Your Tafiki account was closed on **${day()}**${actor.type === 'admin' ? ' by Tafiki' : ' at your request'}. Thank you for being part of FOODCORE.`,
     receipt: { title: 'Closure statement', rows: [['Name', u.name], ['Membership number', u.coop_no || ''], ['Closed', K.when()], ['Units held', 'None'], ['Wallet balance', K.N(0)], ['Reason', reason || '']] },

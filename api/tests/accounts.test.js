@@ -48,3 +48,28 @@ test('closing is refused while money is owed, then closes with a statement email
   assert.equal((await a.get('/api/me')).status, 401, 'signed out everywhere');
   assert.match((await agent(app).post('/api/auth/login').send({ email: 'bola@example.com', password: 'Secret123' })).body.error, /closed/);
 });
+
+test('admin deletes an account: it moves to Inactive Accounts with all data kept, and can be reactivated', async () => {
+  const s = agent(app); const r = await s.post('/api/auth/register').send({ role: 'investor', firstName: 'Dayo', lastName: 'Ige', email: 'dayo@example.com', phone: '08031119999', password: 'Secret123', agreeTerms: true });
+  const id = r.body.user.id;
+  assert.equal((await sup.post('/api/admin/users/' + id + '/delete').send({ reason: '' })).status, 400, 'reason needed');
+  const ed = await sup.patch('/api/admin/users/' + id).send({ phone: '08030000000', city: 'Ibadan' }); assert.equal(ed.status, 200); assert.deepEqual(ed.body.changed.sort(), ['city', 'phone']);
+  const d = await sup.post('/api/admin/users/' + id + '/delete').send({ reason: 'Duplicate account' }); assert.equal(d.status, 200, JSON.stringify(d.body));
+  const u = (await sup.get('/api/admin/users/' + id)).body.user;
+  assert.equal(u.status, 'closed'); assert.equal(u.deleted, true); assert.equal(u.closedReason, 'Duplicate account'); assert.ok(u.closedAt); assert.ok(u.closedBy);
+  assert.equal(u.email, 'dayo@example.com'); assert.equal(u.phone, '08030000000'); assert.ok(await db('users').where({ id }).first(), 'record kept');
+  assert.equal((await agent(app).post('/api/auth/login').send({ email: 'dayo@example.com', password: 'Secret123' })).status, 401, 'cannot sign in');
+  assert.ok((await sup.get('/api/admin/users')).body.users.some((x) => x.id === id && x.deleted), 'still listed for the console');
+  assert.equal((await sup.post('/api/admin/users/' + id + '/status').send({ status: 'active' })).status, 200);
+  const back = (await sup.get('/api/admin/users/' + id)).body.user; assert.equal(back.status, 'active'); assert.equal(back.deleted, false); assert.equal(back.closedAt, null);
+  assert.equal((await agent(app).post('/api/auth/login').send({ email: 'dayo@example.com', password: 'Secret123' })).status, 200);
+  assert.equal((await mails('dayo@example.com', 'Your Tafiki account is active again')).length, 1);
+});
+
+test('an account that still holds units or money cannot be deleted', async () => {
+  const id = (await db('users').where({ email: 'dayo@example.com' }).first()).id;
+  await db('wallet_tx').insert({ id: 'wt-del-1', user_id: id, type: 'adjustment', amount: 5000, status: 'completed', memo: 'test' }); // test database only
+  const d = await sup.post('/api/admin/users/' + id + '/delete').send({ reason: 'Test' }); assert.equal(d.status, 400); assert.match(d.body.error, /Their wallet/);
+  assert.equal((await db('users').where({ id }).first()).status, 'active');
+  await db('wallet_tx').where({ id: 'wt-del-1' }).del();
+});
