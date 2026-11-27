@@ -7,7 +7,11 @@
 <title>Tafiki Investor Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Poppins:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Poppins:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap"><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Poppins:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'"><noscript><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Poppins:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
+
+</head>
+<body>
+<div id="app"><div class="boot-splash" role="status" aria-label="Loading Tafiki" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;background:#fff;z-index:5"><img src="img/app/member-192.png" alt="Tafiki" width="132" height="132" style="width:132px;height:132px;border-radius:30px;box-shadow:0 10px 30px rgba(29,65,7,.15)"><span style="width:26px;height:26px;border-radius:50%;border:3px solid #DCEBC8;border-top-color:#2B5A12;animation:bootspin .8s linear infinite"></span><style>@keyframes bootspin{to{transform:rotate(360deg)}}</style></div></div><script>(function(){if(/^\/(console|control)/.test(location.pathname)||/^#(admin|console)/.test(location.hash)){var b=document.querySelector(".boot-splash");b.style.background="#20460F";b.querySelector("img").src="img/app/icon-192.png";}})();</script>
 <style>
 :root{
   /* Layout: white public site with Tafiki-green feature bands; portals = light rail + card workspace. Colours from the Tafiki logo: deep green wordmark, orange dot, lime figures. */
@@ -2248,12 +2252,12 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
 @media(max-width:420px){.ai-topr{flex-wrap:wrap!important;justify-content:flex-start!important;max-width:100%}.ai-topr>*{flex:none!important}}
 @media(max-width:800px){.lg .lg-f{display:flex!important;flex-wrap:wrap;justify-content:flex-end;gap:4px 14px}.lg .lg-f>span:first-child{flex:1 1 100%}}
 </style>
-</head>
-<body>
-<div id="app"></div>
 <div id="modal"></div>
 <div class="toasts" id="toasts"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+/* jsPDF (certificates, statements, reports) loads only when a PDF is first needed, so it never slows the first load. */
+window.needPdf=()=>window.jspdf?Promise.resolve(true):(window.__pdfP=window.__pdfP||new Promise(res=>{const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';sc.async=true;sc.onload=()=>res(!!window.jspdf);sc.onerror=()=>{window.__pdfP=null;res(false);};document.head.appendChild(sc);}));
+</script>
 <script>
 /* ============================== CONFIG & HELPERS ============================== */
 const KEY='tafiki-proto-v12';
@@ -2458,11 +2462,13 @@ window.addEventListener('hashchange',()=>{if(window.navTrack)navTrack();document
   if(old)return;const d=document.createElement('div');d.id='app-off';d.className='app-off';d.setAttribute('role','status');
   d.innerHTML='<b>You’re offline.</b> Reconnect to continue. Figures are paused until you’re back online.';document.body.appendChild(d);}
  if(!CLEAN)return;
+ /* opened from the home-screen icon: go straight to the account (sign-in, or the mart portal for marts) */
+ if(standalone()&&!onConsole()&&route()==='home'){window.__R='me';try{history.replaceState({r:'me'},'','/');}catch(e){}}
  head();window.addEventListener('hashchange',()=>{head();bar();net();});
  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;bar();});
  window.addEventListener('appinstalled',()=>{deferred=null;bar();});
  window.addEventListener('online',net);window.addEventListener('offline',net);
- window.addEventListener('load',()=>{if(standalone()&&!onConsole()&&route()==='home'){setTimeout(()=>{let u=null;try{u=S.session&&me();}catch(e){}if(u&&u.role==='retailer')go('shop');else if(u&&u.role==='investor')go('me');else go('login');},400);}bar();net();if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});});
+ window.addEventListener('load',()=>{bar();net();if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});});
 })();
 
 function protoBar(){
@@ -3105,7 +3111,7 @@ function certPdf(h){
 let DL=null,DLready=false;
 (async()=>{try{if(window.claude&&typeof window.claude.use==='function')DL=await window.claude.use('downloads');}catch(e){}DLready=true;})();
 async function downloadCert(h){
- if(!window.jspdf){toast('The certificate generator could not load. Check your connection and try again.');return;}
+ if(!(await needPdf())){toast('The certificate generator could not load. Check your connection and try again.');return;}
  const blob=certPdf(h),name='FOODCORE Certificate of Stake '+h.certNo+'.pdf';
  if(DL){try{await DL.save({filename:name,data:blob});toast('Certificate saved.');}catch(e){toast(e&&e.code==='declined'?'Download cancelled.':'Downloads are not available in this view.');}return;}
  try{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);toast('Certificate downloading.');}catch(e){toast('Downloads are not available in this view.');}
@@ -3827,7 +3833,7 @@ function statementPdf(u){
  need(26);doc.setFillColor(246,250,242);doc.roundedRect(M,y,W-2*M,20,3,3,'F');
  txt('Notes',M+4,y+6,{b:1,s:8,c:G});txt(D.note+(u.role==='investor'?' Returns are targets based on mart performance and are paid every 90 days.':'')+' Amounts in brackets are awaiting confirmation. Questions: support@tafiki.com.',M+4,y+11,{s:7.2,c:MU,w:W-2*M-8});
  footer();return {blob:doc.output('blob'),no};}
-async function downloadStatement(){const u=me();if(!u)return;if(!window.jspdf){toast('The statement generator could not load. Check your connection and try again.');return;}
+async function downloadStatement(){const u=me();if(!u)return;if(!(await needPdf())){toast('The statement generator could not load. Check your connection and try again.');return;}
  const {blob,no}=statementPdf(u),name='Tafiki Statement '+no+'.pdf';
  if(DL){try{await DL.save({filename:name,data:blob});toast('Statement saved.');}catch(e){toast(e&&e.code==='declined'?'Download cancelled.':'Downloads are not available in this view.');}return;}
  try{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);toast('Statement downloading.');}catch(e){toast('Downloads are not available in this view.');}}
@@ -4535,7 +4541,7 @@ const pdfD=d=>d?new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'sho
 async function dataExport(){if(window.LIVE)return API('/api/admin/data/export');
  return {generatedAt:new Date(),generatedBy:'Admin',users:S.users.filter(u=>u.role!=='admin').map(u=>({role:u.role==='retailer'?'retailer':'investor',name:u.name,email:u.email,phone:u.phone,shop:u.shop,kyc_status:u.kyc,status:'active',coop_no:u.coop?coopNo(u):'',created_at:u.joined})),packages:S.stores.map(s=>({name:s.name,area:s.area,city:s.city,stage:s.stage,units_total:S.st.slotsPerStore,opened_at:s.opened})),
   holdings:S.holdings.filter(h=>h.status!=='cancelled').map(h=>({ref:h.ref,member:user(h.userId).name,mart:store(h.storeId).name,units:h.slots,amount:h.slots*S.st.slotPrice,status:h.status,paid_at:h.paid})),payments:[],payouts:(S.payouts||[]).map(p=>({mart:store(p.storeId).name,cycle_no:p.cycle,profit:p.profit,per_unit:p.perSlot,investors_total:p.pool,created_at:p.date})),withdrawals:S.tx.filter(t=>t.type==='withdrawal').map(t=>({ref:t.id,member:user(t.userId).name,amount:-t.amount,status:t.status,created_at:t.date})),redemptions:[],remittances:(S.remits||[]).map(r=>({ref:r.ref,mart:(user(r.userId)||{}).shop,amount:r.amount,status:r.status,created_at:r.date})),deliveries:S.deliveries.map(d=>({code:d.code,mart:(shopFor(store(d.toId))||{}).shop||'',kind:d.kind||'',value:dValue(d),status:d.status})),emails:[],counts:{}};}
-A.dataPdf=async()=>{if(!window.jspdf)return toast('The PDF tool could not load. Check your connection and try again.');let D;try{toast('Preparing the data report…');D=await dataExport();}catch(e){return toast(e.message);}
+A.dataPdf=async()=>{if(!(await needPdf()))return toast('The PDF tool could not load. Check your connection and try again.');let D;try{toast('Preparing the data report…');D=await dataExport();}catch(e){return toast(e.message);}
  const {jsPDF}=window.jspdf,doc=new jsPDF({unit:'pt',format:'a4'}),W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=36;let y=M;
  const head=()=>{doc.setFillColor(29,65,7);doc.rect(0,0,W,46,'F');doc.setTextColor(255);doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text('tafiki',M,29);doc.setFont('helvetica','normal');doc.setFontSize(9);doc.text('Platform data report · '+pdfD(D.generatedAt)+' · '+(D.generatedBy||''),W-M,29,{align:'right'});doc.setTextColor(36,54,26);y=70;};
  const foot=()=>{const n=doc.internal.getNumberOfPages();for(let i=1;i<=n;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(120);doc.text('Confidential · Tafiki Technology · page '+i+' of '+n,W/2,H-18,{align:'center'});}};
@@ -4636,7 +4642,7 @@ function coopCertPdf(u){const {jsPDF}=window.jspdf,doc=new jsPDF({orientation:'l
  [[40,'Secretary','FOODCORE Cooperative Limited'],[W-110,'President','FOODCORE Cooperative Limited']].forEach(([x,a,b])=>{doc.setDrawColor(...INK);doc.setLineWidth(.3);doc.line(x,165,x+70,165);txt(a,x,171,{b:1,s:10});txt(b,x,176,{s:8.5,c:MU});});
  txt('Issued electronically on Tafiki on '+fd(today())+'. FOODCORE is a product of FOODCORE Cooperative Limited.',W/2,190,{a:'center',s:8,c:MU});
  return doc.output('blob');}
-async function downloadCoop(u){if(!window.jspdf){toast('The certificate generator could not load. Check your connection and try again.');return;}
+async function downloadCoop(u){if(!(await needPdf())){toast('The certificate generator could not load. Check your connection and try again.');return;}
  const blob=coopCertPdf(u),name='FOODCORE Cooperative Membership Certificate '+coopNo(u)+'.pdf';
  if(DL){try{await DL.save({filename:name,data:blob});toast('Membership certificate saved.');}catch(e){toast(e&&e.code==='declined'?'Download cancelled.':'Downloads are not available in this view.');}return;}
  try{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);toast('Membership certificate downloading.');}catch(e){toast('Downloads are not available in this view.');}}
@@ -5747,7 +5753,7 @@ const actText=a=>{let d={};try{d=JSON.parse(a.detail||'{}');}catch(e){}return (A
 
 async function loadPublic(){try{const [t,p]=await Promise.all([API('/api/terms'),API('/api/packages')]);applyTerms(t);S.stores=p.packages.map(mapPkg);LV.offline=false;}catch(e){if(e.status!==0)throw e;LV.offline=true;S.stores=[];S.holdings=[];S.deliveries=[];}}
 async function loadMember(){const m=LV.me;const u=mapUser(m);S.users=[u];S.session={userId:u.id};
- if(m.role==='investor'){const [h,w]=await Promise.all([API('/api/holdings'),API('/api/me/wallet')]);S.holdings=h.holdings.map(mapHold);S.tx=w.transactions.map(mapTx);
+ if(m.role==='investor'){const pre=LV.pre&&await LV.pre;LV.pre=null;const [h,w]=pre||await Promise.all([API('/api/holdings'),API('/api/me/wallet')]);S.holdings=h.holdings.map(mapHold);S.tx=w.transactions.map(mapTx);
   const ds=await Promise.all(h.holdings.filter(x=>['active','redeem','closed'].includes(x.status)).map(x=>API('/api/holdings/'+x.id+'/deliveries').then(r=>r.deliveries.map(d=>Object.assign(mapDel(d,null),{holdingId:x.id,toType:'store',toId:x.package.id})))));S.deliveries=ds.flat();}
  else{const [a,ds,rm,cy,sl]=await Promise.all([API('/api/store/account'),API('/api/store/deliveries'),API('/api/store/remittances'),API('/api/store/cycles'),API('/api/store/sales')]);
   applyAccount(u,a.account);applyCycles(u,cy.cycles);a.packages.forEach(p=>{const s=S.stores.find(x=>x.id===p.id);if(s)s.shopId=u.id;else S.stores.push(Object.assign(mapPkg(p),{shopId:u.id}));});
@@ -5774,10 +5780,13 @@ async function loadAdmin(){const q=s=>API(s).catch(()=>null);
  S.adm={admins:(adm?adm.admins:[]).map(a=>({id:a.id,name:a.name,email:a.email,role:a.role,status:a.status,last:a.lastLoginAt?+new Date(a.lastLoginAt):null,created:day(a.createdAt)})),twofa:!!(sec&&sec.security.twofa),timeout:sec?sec.security.timeoutMinutes:60,maxFail:sec?sec.security.maxFailures:5,lockMin:sec?sec.security.lockMinutes:15,hist:(ev?ev.events:[]).map(e=>({t:+new Date(e.created_at),email:e.email,ok:!!e.ok,note:e.note||''})),fails:{},v2:1,v3:1};
  S.adminAuth={id:LV.admin.id,at:Date.now(),exp:Date.now()+S.adm.timeout*60000};
  LV.redemptions=rd?rd.redemptions:[];}
-async function liveLoad(){await loadPublic();
- const area=route();
- if(area.startsWith('admin')||area==='console'){try{const a=await API('/api/admin/auth/me');LV.admin=a.admin;LV.perms=a.permissions;await loadAdmin();}catch(e){LV.admin=null;}}
- else{try{const m=await API('/api/me');LV.me=m.user;await loadMember();}catch(e){LV.me=null;}}}
+async function liveLoad(){const area=route(),adm=area.startsWith('admin')||area==='console';
+ LV.pre=area.startsWith('me')?Promise.all([API('/api/holdings'),API('/api/me/wallet')]).catch(()=>null):null;
+ /* who-am-I and the public data are fetched together, not one after the other */
+ const who=API(adm?'/api/admin/auth/me':'/api/me').then(x=>x,()=>null);
+ await loadPublic();const w=await who;
+ if(adm){if(w){try{LV.admin=w.admin;LV.perms=w.permissions;await loadAdmin();}catch(e){LV.admin=null;}}else LV.admin=null;}
+ else{if(w){try{LV.me=w.user;await loadMember();}catch(e){LV.me=null;}}else LV.me=null;}}
 async function refresh(msg){try{await liveLoad();}catch(e){toast(e.message);}render();if(msg)toast(msg);}
 window.liveRefresh=refresh;
 const act=(fn,msg)=>async(...a)=>{if(LV.busy)return;LV.busy=true;try{const out=await fn(...a);if(out!==false){closeModal();await refresh(typeof msg==='function'?msg(out):msg);}}catch(e){toast(e.message);}finally{LV.busy=false;}};
