@@ -26,7 +26,7 @@ const callback = (jobId, code, text) => { const sig = new smile.Signature(proces
 
 test('Smile ID: token, signed callback verifies the member and confirms paid units', async () => {
   assert.equal((await inv.get('/api/holdings/' + holdingId)).body.holding.status, 'confirming');
-  const st = await inv.post('/api/me/kyc/start').send({ product: 'biometric_kyc', idType: 'NIN' }); assert.equal(st.status, 200); assert.match(st.body.token, /web-token/); assert.equal(st.body.environment, 'sandbox');
+  const st = await inv.post('/api/me/kyc/start').send({ product: 'biometric_kyc', idType: 'NIN' }); assert.equal(st.status, 200); assert.match(st.body.token, /web-token/); assert.equal(st.body.environment, 'sandbox'); assert.deepEqual(st.body.idTypes, ['NIN_V2', 'BVN', 'VOTER_ID']); assert.deepEqual(st.body.consentTypes, ['NIN_V2', 'BVN']);
   const bad = callback(st.body.jobId, '1012', 'ID Number Validated'); bad.signature = 'forged';
   assert.equal((await agent(app).raw.post('/webhooks/smileid').send(bad)).status, 401);
   assert.equal((await agent(app).raw.post('/webhooks/smileid').send(callback(st.body.jobId, '1012', 'ID Number Validated'))).status, 200);

@@ -49,6 +49,7 @@ const mask = (v) => (v ? v.slice(0, 8) + '…' : '(empty)');
   if (!e.SMILE_PARTNER_ID || !e.SMILE_API_KEY) warn('Smile ID keys are empty: identity checks are off (admins can verify members by hand)');
   else {
     e.SMILE_ENV === 'production' ? warn('SMILE_ENV=production: real ID checks, billed') : ok('SMILE_ENV=sandbox (simulation: use Smile ID test ID numbers)');
+    { const t = (e.SMILE_ID_TYPES || 'NIN_V2,BVN,VOTER_ID').trim(); ok(/^all$/i.test(t) ? 'ID types: every type your Smile ID account allows' : 'ID types offered: ' + t.split(',').map((x) => x.trim()).join(', ') + ' (NIN and BVN must be switched on for your Smile ID account)'); }
     try {
       const smile = require('smile-identity-core');
       const conn = new smile.WebApi(e.SMILE_PARTNER_ID, e.SMILE_CALLBACK_URL || (e.API_URL || '') + '/webhooks/smileid', e.SMILE_API_KEY, e.SMILE_ENV === 'production' ? 1 : 0);

@@ -10,13 +10,17 @@ const activity = require('./activity');
 let tokenImpl = null; // tests can replace
 const setTokenImpl = (f) => { tokenImpl = f; };
 const env = () => ({ partnerId: process.env.SMILE_PARTNER_ID || '', apiKey: process.env.SMILE_API_KEY || '', server: process.env.SMILE_ENV === 'production' ? 1 : 0, callback: process.env.SMILE_CALLBACK_URL || `${config.apiUrl}/webhooks/smileid`, approved: (process.env.SMILE_APPROVED_CODES || '1012,1020,0810').split(',').map((s) => s.trim()) });
+// Nigerian ID types offered in Smile ID's screen (SMILE_ID_TYPES, comma separated; "all" = whatever the Smile ID account allows).
+// NIN and BVN also show Smile ID's consent screen, which the ID authorities require.
+const CONSENT = ['BVN', 'BVN_MFA', 'NIN', 'NIN_V2', 'NIN_SLIP', 'V_NIN'];
+const idTypes = () => { const v = (process.env.SMILE_ID_TYPES || 'NIN_V2,BVN,VOTER_ID').trim(); return /^all$/i.test(v) ? [] : v.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean); };
 async function start(user, product = 'biometric_kyc', idType) {
   const e = env();
   if (!e.partnerId || !e.apiKey) throw Object.assign(new Error('Identity verification is not configured yet. Add the Smile ID keys to .env.'), { status: 503 });
   const jobId = 'tf-' + uuid();
   const tok = tokenImpl ? await tokenImpl({ user_id: user.id, job_id: jobId, product }) : await new smile.WebApi(e.partnerId, e.callback, e.apiKey, e.server).get_web_token({ user_id: user.id, job_id: jobId, product, callback_url: e.callback });
   await getDb()('kyc_checks').insert({ id: uuid(), user_id: user.id, job_id: jobId, product, id_type: idType || null, status: 'pending' });
-  return { token: tok.token, partnerId: e.partnerId, jobId, product, environment: e.server ? 'live' : 'sandbox', callbackUrl: e.callback };
+  return { token: tok.token, partnerId: e.partnerId, jobId, product, environment: e.server ? 'live' : 'sandbox', callbackUrl: e.callback, idTypes: idTypes(), consentTypes: idTypes().filter((t) => CONSENT.includes(t)) };
 }
 function validCallback(body) {
   const e = env(); if (!e.apiKey || !body || !body.signature || !body.timestamp) return false;

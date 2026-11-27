@@ -5847,7 +5847,7 @@ const _pRegL=pRegister;pRegister=function(){let h=_pRegL();if(REG.step!==4)retur
 /* Smile ID hosted web integration */
 async function liveKyc(quiet){try{const k=await API('/api/me/kyc/start',{method:'POST',body:{product:'biometric_kyc'}});
   await new Promise((ok,no)=>{if(window.SmileIdentity)return ok();const s=document.createElement('script');s.src='https://cdn.smileidentity.com/inline/v1/js/script.min.js';s.onload=ok;s.onerror=()=>no(new Error('Could not load Smile ID. Try again from your dashboard.'));document.head.appendChild(s);});
-  window.SmileIdentity({token:k.token,product:k.product,callback_url:k.callbackUrl,environment:k.environment==='live'?'live':'sandbox',partner_details:{partner_id:k.partnerId,name:'Tafiki',logo_url:location.origin+'/img/foodcore-mark.png',policy_url:location.origin+'/privacy',theme_color:'#1D4107'},
+  window.SmileIdentity({token:k.token,product:k.product,callback_url:k.callbackUrl,environment:k.environment==='live'?'live':'sandbox',...(k.idTypes&&k.idTypes.length?{id_selection:{NG:k.idTypes}}:{}),...(k.consentTypes&&k.consentTypes.length?{consent_required:{NG:k.consentTypes}}:{}),partner_details:{partner_id:k.partnerId,name:'Tafiki',logo_url:location.origin+'/img/foodcore-mark.png',policy_url:location.origin+'/privacy',theme_color:'#1D4107'},
    onSuccess:()=>{toast('Thank you. Your identity check has been submitted.');setTimeout(()=>refresh(),4000);},onClose:()=>{},onError:e=>toast((e&&e.message)||'The identity check did not complete. You can try again from your dashboard.')});}
  catch(e){if(!quiet)toast(e.message);}}
 A.smSelfie=()=>liveKyc(false);A.smStart=()=>liveKyc(false);
