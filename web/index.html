@@ -2243,6 +2243,7 @@ h1,h2,h3,.sec-h h2{text-wrap:balance}
 .app-steps i{font-style:normal;display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:24px;padding:0 5px;border-radius:7px;background:#EEF5E6;color:#1D4107;font-weight:700;vertical-align:-3px}.app-steps i svg{width:16px;height:16px}
 .app-steps .ok{width:100%;border:0;border-radius:999px;background:#20460F;color:#fff;font:700 15px "Figtree",sans-serif;padding:13px;cursor:pointer}
 @media(max-width:900px){.app-bar.up{bottom:calc(92px + env(safe-area-inset-bottom))}}
+.fx-nav .cnt.mu{background:#E3EADB!important;color:#4A5C40!important;box-shadow:none!important}
 .app-off{position:fixed;left:0;right:0;top:0;z-index:9001;background:#8A1F1F;color:#fff;text-align:center;font:500 13.5px "Figtree",system-ui,sans-serif;padding:calc(8px + env(safe-area-inset-top)) 14px 8px}
 @media(max-width:420px){.ai-topr{flex-wrap:wrap!important;justify-content:flex-start!important;max-width:100%}.ai-topr>*{flex:none!important}}
 @media(max-width:800px){.lg .lg-f{display:flex!important;flex-wrap:wrap;justify-content:flex-end;gap:4px 14px}.lg .lg-f>span:first-child{flex:1 1 100%}}
@@ -2885,7 +2886,7 @@ function sSales(u){return `${topH('Sales and payments','Tell us what sold, then 
 /* ============================== ADMIN ============================== */
 function adminShell(r){
   const u=me();
-  const q={kyc:S.users.filter(x=>x.kyc==='pending').length,pay:S.holdings.filter(h=>h.status==='confirming').length,req:S.holdings.filter(h=>h.status==='redeem').length,wd:S.tx.filter(t=>t.status==='processing').length,disp:S.deliveries.filter(d=>d.status<3).length,low:S.stores.reduce((a,s)=>a+lowLines(s).length,0)};
+  const q={kyc:S.users.filter(x=>x.kyc==='pending'&&x.status!=='closed').length,pay:S.holdings.filter(h=>h.status==='confirming').length,req:S.holdings.filter(h=>h.status==='redeem').length,wd:S.tx.filter(t=>t.status==='processing').length,disp:S.deliveries.filter(d=>d.status<3).length,low:S.stores.reduce((a,s)=>a+lowLines(s).length,0)};
   const nav=[['admin','Overview'],['admin-stores','Marts'],['admin-slots','Units and payments',q.pay||''],['admin-investors','Investors',q.kyc||''],['admin-stock','Stock',q.low||''],['admin-dispatch','Dispatch',q.disp||''],['admin-payouts','Payouts',q.wd||''],['admin-requests','Requests',q.req||''],['admin-shops','Franchise shops'],['admin-config','Terms and settings']];
   const v={'admin-stores':aStores,'admin-slots':aSlots,'admin-investors':aInvestors,'admin-stock':aStock,'admin-dispatch':aDispatch,'admin-payouts':aPayouts,'admin-requests':aRequests,'admin-shops':aShops,'admin-config':aConfig}[r]||(()=>aOverview(q));
   return shell(nav,r,u,'Admin · FOODCORE Cooperative Limited',v());
@@ -3332,7 +3333,7 @@ function fxShell(u,nav,r,btn,content,prof){
  const base=r.split('-')[0],nr=base+'-notifications',unread=fxNotes(u).some(n=>n.unread);
  const on=n=>r===n[0]||(n[4]||[]).some(p=>r.startsWith(p));
  return `<div class="fx"><aside class="fx-menu"><a class="fx-logo" href="#home" aria-label="Tafiki home"><img src="${LOGO_C}" alt="Tafiki"></a>
- <nav class="fx-nav" aria-label="Portal">${nav.map(n=>n[0]==='-'?`<div class="sub">${n[1]}</div>`:`<a href="#${n[0]}" class="${on(n)?'on':''}">${ic(n[2])}<span>${n[1]}</span>${n[3]?`<span class="cnt">${n[3]}</span>`:''}</a>`).join('')}</nav>
+ <nav class="fx-nav" aria-label="Portal">${nav.map(n=>n[0]==='-'?`<div class="sub">${n[1]}</div>`:`<a href="#${n[0]}" class="${on(n)?'on':''}">${ic(n[2])}<span>${n[1]}</span>${n[3]?`<span class="cnt${n[3].m?' mu':''}" ${n[3].m?'title="Accounts kept on record. Nothing to do."':''}>${n[3].v||n[3]}</span>`:''}</a>`).join('')}</nav>
  <div class="fx-foot"><a href="#${nr}" class="${r===nr?'on':''}"><span class="${unread?'dot':''}" style="display:inline-flex">${ic('bell')}</span>Notifications</a><div class="ln"></div>
  <a href="#${prof}"><span class="fx-av">${initials(u.name)}</span><span class="fx-ell" style="max-width:118px">${esc(u.role==='admin'?'Admin':u.name)}</span></a>
  <button data-a="logout">${ic('logout')}Log out</button></div></aside>
@@ -3470,7 +3471,7 @@ Object.assign(A,{
 /* ============================== ADMIN ============================== */
 function adminShell(r){
  const u=me();
- const q={kyc:S.users.filter(x=>x.kyc==='pending').length,pay:S.holdings.filter(h=>h.status==='confirming').length,req:S.holdings.filter(h=>h.status==='redeem').length,wd:S.tx.filter(t=>t.status==='processing').length,disp:S.deliveries.filter(d=>d.status<3).length,low:S.stores.reduce((a,s)=>a+lowLines(s).length,0),rm:S.remits.filter(x=>x.status==='pending').length};
+ const q={kyc:S.users.filter(x=>x.kyc==='pending'&&x.status!=='closed').length,pay:S.holdings.filter(h=>h.status==='confirming').length,req:S.holdings.filter(h=>h.status==='redeem').length,wd:S.tx.filter(t=>t.status==='processing').length,disp:S.deliveries.filter(d=>d.status<3).length,low:S.stores.reduce((a,s)=>a+lowLines(s).length,0),rm:S.remits.filter(x=>x.status==='pending').length};
  const nav=[['admin','Overview','grid'],['admin-orders','Orders','box',q.disp,['admin-od-']],['admin-investors','Investors','users',q.kyc,['admin-inv-']],['admin-shops','FOODCORE Marts','store'],['admin-transactions','Transactions','card',q.wd],['admin-remittance','Remittance','cash',q.rm],['admin-audit','Audit and reconciliation','shield',auditDue()],
   ['-','Operations'],['admin-stores','Investment packages','store'],['admin-slots','Units and payments','shield',q.pay],['admin-package','Unit package','box'],['admin-stock','Stock','layers',q.low],['admin-dispatch','Dispatch board','truck'],['admin-payouts','Payouts','wallet'],['admin-requests','Requests','file',q.req],['admin-emails','Email log','file'],['admin-config','Terms and settings','settings']];
  let c;
@@ -4344,7 +4345,7 @@ const _efxC=ensureFx;ensureFx=function(){_efxC();ensureCoop();};
 
 /* ============================== ADMIN v3 · structured around the member and mart journeys ============================== */
 function adQ(){const now=Date.now(),cs=S.users.filter(u=>u.role==='retailer').map(u=>cycState(u)).filter(Boolean);
- return {invK:S.users.filter(x=>x.role==='investor'&&x.kyc==='pending').length,shopK:S.users.filter(x=>x.role==='retailer'&&x.kyc==='pending').length,
+ return {invK:S.users.filter(x=>x.role==='investor'&&x.kyc==='pending'&&x.status!=='closed').length,shopK:S.users.filter(x=>x.role==='retailer'&&x.kyc==='pending'&&x.status!=='closed').length,
   pay:S.holdings.filter(h=>h.status==='confirming').length,fit:S.stores.filter(s=>s.stage==='funding'&&confirmedSlots(s)>=S.st.slotsPerStore).length,
   open:S.stores.filter(s=>s.stage==='fitout').length,unas:S.stores.filter(s=>s.stage==='trading'&&!s.shopId).length,
   disp:S.deliveries.filter(d=>d.status<3).length,aud:cs.filter(c=>now>=c.auditAt&&!c.audited).length,rm:(S.remits||[]).filter(x=>x.status==='pending').length,
@@ -4352,7 +4353,7 @@ function adQ(){const now=Date.now(),cs=S.users.filter(u=>u.role==='retailer').ma
 const nz=v=>v||'';
 function adminShell(r){const u=me(),q=adQ();
  const nav=[['admin','Dashboard','grid'],['admin-analytics','Analytics','chart'],
-  ['-','Members'],['admin-investors','Investors','users',nz(q.invK),['admin-inv-']],['admin-slots','Units And Payments','shield',nz(q.pay)],['admin-payouts','Payouts','wallet',0,['admin-payouts-']],['admin-transactions','Withdrawals','card',nz(q.wd)],['admin-requests','Requests','file',nz(q.req)],['admin-inactive','Inactive Accounts','users',nz(S.users.filter(x=>x.status==='closed'&&x.role!=='admin').length)],
+  ['-','Members'],['admin-investors','Investors','users',nz(q.invK),['admin-inv-']],['admin-slots','Units And Payments','shield',nz(q.pay)],['admin-payouts','Payouts','wallet',0,['admin-payouts-']],['admin-transactions','Withdrawals','card',nz(q.wd)],['admin-requests','Requests','file',nz(q.req)],['admin-inactive','Inactive Accounts','users',(n=>n?{v:n,m:1}:'')(S.users.filter(x=>x.status==='closed'&&x.role!=='admin').length)],
   ['-','Packages'],['admin-stores','Investment Packages','layers',nz(q.fit+q.open+q.unas),['admin-pkg-']],['admin-package','Unit Package','box'],
   ['-','FOODCORE Marts'],['admin-shops','Marts','store','',['admin-store-']],['admin-audit','Audit And Reconciliation','shield',nz(q.aud+q.rec)],['admin-remittance','Remittance','cash',nz(q.rm)],
   ['-','Logistics'],['admin-orders','Deliveries','truck','',['admin-od-']],['admin-stock','Stock On Shelves','layers'],
