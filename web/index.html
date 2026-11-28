@@ -6,7 +6,52 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <meta id="app-theme" name="theme-color" content="#FFFFFF">
-<style>html,body{background:#fff}</style>
+<style>html,body{background:#fff}
+.u-hero .sup .fx-av{display:inline-grid!important;place-items:center;opacity:1!important;font-size:15px!important;letter-spacing:0}
+/* order page cards */
+.oc-hero{gap:14px!important}
+.oc-top{display:flex;align-items:center;gap:14px}
+.oc-top img.box{width:52px;height:52px;flex:none}
+.oc-t{flex:1;min-width:0}.oc-t b{display:block;font:600 21px/1.2 "Poppins",sans-serif;color:var(--x8);white-space:nowrap}
+.oc-t em{display:block;font-style:normal;font-size:12.5px;color:#7a8672;margin-top:3px}
+.oc-top .fx-st{flex:none;margin-left:auto}
+.oc-meta{display:grid;grid-template-columns:auto 1fr;gap:10px}
+.oc-meta>div{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--x2);border-radius:16px;padding:10px 12px;min-width:0}
+.oc-meta i{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--x1);color:var(--x7);flex:none}
+.oc-meta i svg{width:18px;height:18px}
+.oc-meta p{margin:0;min-width:0}.oc-meta small{display:block!important;font-size:11.5px!important;opacity:1!important;color:#7a8672;text-transform:uppercase;letter-spacing:.06em}
+.oc-meta strong{display:block;font:600 15px/1.3 "Poppins",sans-serif;color:var(--x9)}
+.oc-stock{background:#fff;border:1px solid var(--x2);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 6px 18px rgba(29,65,7,.06)}
+.oc-tags{display:flex;flex-wrap:wrap;gap:6px}
+.oc-pill{display:inline-flex!important;align-items:center;font:500 12.5px "Poppins",sans-serif!important;opacity:1!important;letter-spacing:0;padding:5px 11px;border-radius:999px;background:var(--x0);border:1px solid var(--x2);color:#4d5c44}
+.oc-pill.c1{background:var(--x8);border-color:var(--x8);color:#fff}
+.oc-pill.rs{background:#B26A00;border-color:#B26A00;color:#fff}
+.oc-lines{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.oc-lines>div{display:flex;align-items:center;gap:10px;background:var(--x0);border-radius:14px;padding:10px 12px;min-width:0}
+.oc-lines img,.oc-lines .ph{width:40px;height:40px;object-fit:contain;flex:none;border-radius:10px;background:#fff;display:grid;place-items:center}
+.oc-lines p{margin:0;min-width:0}.oc-lines strong{display:block;font:700 19px/1.15 "Poppins",sans-serif;color:var(--x8)}
+.oc-lines small{display:block!important;font-size:12.5px!important;opacity:1!important;color:#5d6b55;line-height:1.3}
+.oc-foot{margin:0;font-size:13px;line-height:1.45;color:#6b7a62}.oc-foot b{color:var(--x8)}
+@media(max-width:420px){.oc-meta{grid-template-columns:1fr}.oc-hero .oc-t b{font-size:18px}.oc-top{gap:10px}.oc-top img.box{width:42px;height:42px}}
+/* notification cards */
+.nc-list{display:flex;flex-direction:column;gap:10px}
+.nc-day{font:600 13px "Poppins",sans-serif;color:#8a9682;padding:10px 4px 0}
+.nc{position:relative;display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:18px;background:#fff;border:1px solid #E7ECE2;box-shadow:0 4px 14px rgba(29,65,7,.05);text-decoration:none!important;color:inherit;transition:transform .15s,box-shadow .15s}
+.nc:active{transform:scale(.99)}.nc:hover{box-shadow:0 8px 20px rgba(29,65,7,.09)}
+.nc-ic{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;flex:none}
+.nc-ic svg{width:20px;height:20px}
+.nc.go .nc-ic{background:#E8EFFD;color:#2F5BD3}.nc.new .nc-ic{background:#FFF3DE;color:#B26A00}.nc.ok .nc-ic{background:var(--x1);color:var(--x7)}.nc.acc .nc-ic{background:#F0ECFA;color:#6A4FB5}
+.nc-b{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.nc-top{display:flex;align-items:baseline;gap:10px}
+.nc-top b{flex:1;min-width:0;font:600 15.5px/1.3 "Poppins",sans-serif;color:var(--x9)}
+.nc-top time{font-size:12px;color:#8a9682;white-space:nowrap}
+.nc-sub{font-size:13.5px;line-height:1.45;color:#5d6b55}
+.nc-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
+.nc-tags i{font-style:normal;font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:999px;background:var(--x0);border:1px solid var(--x2);color:#4d5c44}
+.nc.unread{border-color:var(--x3);background:linear-gradient(180deg,#fff,#FAFCF7)}
+.nc.unread::after{content:"";position:absolute;top:16px;right:14px;width:8px;height:8px;border-radius:50%;background:#E8833A}
+.nc.unread .nc-top time{margin-right:14px}
+</style>
 <title>Tafiki Investor Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3375,8 +3420,10 @@ function fxNotes(u){const out=[],role=u.role,P=x=>out.push(x);
   if(role==='investor'&&!(d.holdingId&&myHoldings(u.id).some(h=>h.id===d.holdingId)))return;
   const to=dest(d),drv=(d.driver||'').split(' ·')[0];
   const T=[`Order #${d.code} created · awaiting pick-up at the Tafiki Distribution Centre`,`Order #${d.code} picked up from the Tafiki Distribution Centre${drv?' by '+drv:''}`,`Order #${d.code} is in transit to ${to}`+(role==='retailer'?' · count the bags, then tap All received':''),`Order #${d.code} successfully delivered to ${to}!`];
-  const IT=role==='investor'?(()=>{const h=S.holdings.find(x=>x.id===d.holdingId),sh=d.lines.map(l=>`${l.qty.toLocaleString()} bags of ${sku(l.sku).name.replace(/\s*\(.*\)/,'')}`).join(' + ');const w=d.kind==='restock'?`Restock · cycle ${d.cycle+1} (#${d.code}, from sales, no new payment)`:`First cycle stock order #${d.code}`;return [`${w} for ${h.ref} raised · ${sh} for ${to}`,`${w} for ${h.ref} picked up from the Tafiki Distribution Centre`,`${w} for ${h.ref} is on its way to ${to}`,`${w} for ${h.ref} delivered to ${to} · ${sh} now on the shelf`];})():null;
-  d.log.forEach(([st,t])=>P({ts:fxTs(t,d.code+st,st),icon:st===3?'check':st===0?'box':'truck',tone:st===3?'in':'',text:IT?IT[st]:T[st],href:base+'-od-'+d.id}));
+  const IT=role==='investor'?(()=>{const h=S.holdings.find(x=>x.id===d.holdingId),sh=d.lines.map(l=>`${l.qty.toLocaleString()} bags of ${sku(l.sku).name.replace(/\s*\(.*\)/,'')}`).join(' + ');const w=d.kind==='restock'?`Restock · cycle ${d.cycle+1} (#${d.code}, from sales, no new payment)`:`First cycle stock order #${d.code}`;const L=[`${w} for ${h.ref} raised · ${sh} for ${to}`,`${w} for ${h.ref} picked up from the Tafiki Distribution Centre`,`${w} for ${h.ref} is on its way to ${to}`,`${w} for ${h.ref} delivered to ${to} · ${sh} now on the shelf`];
+   L.card=[['Stock order raised',`${sh} for ${to}`],['Picked up','Left the Tafiki Distribution Centre'],['On its way',`Heading to ${to}`],['Delivered',`${sh} now on the shelf at ${to}`]];
+   L.tags=[`#${d.code}`,h.ref,d.kind==='restock'?`Restock · cycle ${d.cycle+1}`:'First cycle'];return L;})():null;
+  d.log.forEach(([st,t])=>P({ts:fxTs(t,d.code+st,st),icon:st===3?'check':st===0?'box':'truck',tone:st===3?'in':'',text:IT?IT[st]:T[st],ttl:IT?IT.card[st][0]:null,sub:IT?IT.card[st][1]:null,tags:IT?IT.tags:null,href:base+'-od-'+d.id}));
   if(role!=='investor')(d.notes||[]).forEach(nt=>P({ts:nt.ts,icon:'clock',tone:'',text:`Order #${d.code}: ${nt.text}`,href:base+'-od-'+d.id}));
   if(d.form&&role!=='investor')P({ts:fxTs(d.form.at)+1000,icon:'file',tone:'',text:`Delivery form for #${d.code} signed off with the vendor's OTP`,href:base+'-od-'+d.id});});
  if(role==='investor'){
@@ -3395,7 +3442,15 @@ function fxNotes(u){const out=[],role=u.role,P=x=>out.push(x);
  return out.sort((a,b)=>b.ts-a.ts);}
 function fxNoteRows(list){let last='';return list.map(n=>{const g=fxDayLabel(n.ts),h=g!==last?`<div class="fx-day">${g}</div>`:'';last=g;
  return h+`<a class="fx-row nt ${n.unread?'unread':''}" href="#${n.href}"><span class="ic ${n.tone}">${ic(n.icon)}</span><span class="tx"><b>${esc(n.text)}</b>${n.sub?`<span class="nt-sub">${esc(n.sub)}</span>`:''}</span><span class="tm">${fxTime(n.ts)}</span></a>`;}).join('');}
-function fxNotifPage(u){const list=fxNotes(u);return `<div class="fx-panel"><div class="fx-h2">Notifications <small>${list.filter(n=>n.unread).length} new</small></div><div class="fx-list">${list.length?fxNoteRows(list):fxEmpty('No notifications yet')}</div></div>`;}
+/* Notification cards (member and mart Notifications pages) */
+const NC_TONE={truck:'go',box:'new',check:'ok',cert:'ok',file:'ok',in:'ok',cash:'ok',wallet:'ok',shield:'acc',user:'acc',clock:'new',bell:'acc'};
+function ncSplit(n){if(n.ttl)return [n.ttl,n.sub||'',n.tags||[]];
+ const tags=[...new Set((n.text.match(/#?(?:SO|BD)-\d+|FC-C-\d{4}-\d+|FC-\d+\b(?!-)/g)||[]))];
+ if(n.sub)return [n.text,n.sub,tags];
+ const i=n.text.indexOf(' · ');return i>0?[n.text.slice(0,i),n.text.slice(i+3),tags]:[n.text,'',tags];}
+function fxNoteCards(list){let last='';return list.map(n=>{const g=fxDayLabel(n.ts),h=g!==last?`<div class="nc-day">${g}</div>`:'';last=g;const [t,sb,tg0]=ncSplit(n),tg=n.ttl?tg0:tg0.filter(x=>!t.includes(x));
+ return h+`<a class="nc ${NC_TONE[n.icon]||'acc'} ${n.unread?'unread':''}" href="#${n.href}"><span class="nc-ic">${ic(n.icon)}</span><span class="nc-b"><span class="nc-top"><b>${esc(t)}</b><time>${fxTime(n.ts)}</time></span>${sb?`<span class="nc-sub">${esc(sb)}</span>`:''}${tg.length?`<span class="nc-tags">${tg.map(x=>`<i>${esc(x)}</i>`).join('')}</span>`:''}</span></a>`;}).join('');}
+function fxNotifPage(u){const list=fxNotes(u),card=u.role==='investor'||u.role==='retailer';return `<div class="fx-panel"><div class="fx-h2">Notifications <small>${list.filter(n=>n.unread).length} new</small></div><div class="${card?'nc-list':'fx-list'}">${list.length?(card?fxNoteCards(list):fxNoteRows(list)):fxEmpty('No notifications yet')}</div></div>`;}
 
 /* ---------- transactions ---------- */
 let FXTX={};
@@ -3657,12 +3712,14 @@ function uOrderRow(d,base){const n=d.lines.reduce((a,l)=>a+l.qty,0);
 function uOrder(d,role,back){const shop=role==='shop',to=dest(d),drv=(d.driver||'').split(' ·')[0];
  const myU=role==='investor'?myHoldings(me().id).filter(h=>h.storeId===d.toId&&HELD.includes(h.status)).reduce((x,h)=>x+h.slots,0):0;
  const subs=['Waiting at the Tafiki Distribution Centre',drv?'Picked up by '+drv:'Picked up','On its way to '+to,'Delivered to '+to];
- return `<div class="u-hero t-light" style="grid-template-columns:1fr"><div class="u-head"><img class="box" src="img/fx/box.png" alt=""><div><b>Order #${d.code}</b><small>${d.lines.reduce((a,l)=>a+l.qty,0).toLocaleString()} ${d.lines.every(l=>/-5$/.test(l.sku))?'bags':'items'} for ${esc(to)}</small></div>${dChip(d)}</div>
+ const qty=d.lines.reduce((a,l)=>a+l.qty,0),unit=d.lines.every(l=>/-5$/.test(l.sku))?'bags':'items';
+ return `<div class="u-hero t-light oc-hero" style="grid-template-columns:1fr"><div class="oc-top"><img class="box" src="img/fx/box.png" alt=""><div class="oc-t"><b>Order #${d.code}</b><em>Raised ${dAt(d,0)}</em></div>${dChip(d)}</div>
+ <div class="oc-meta"><div><i>${ic('box')}</i><p><small>Load</small><strong>${qty.toLocaleString()} ${unit}</strong></p></div><div><i>${ic('store')}</i><p><small>${d.status===3?'Delivered to':'Delivering to'}</small><strong>${esc(to)}</strong></p></div></div>
  ${shop?`<div class="sup"><span class="fx-av md" style="background:linear-gradient(180deg,#5E9B33,#2B5A12);color:#fff">${initials(supName(d))}</span><div><span>Supplier</span><b>${esc(supName(d))}</b><em>${d.holdingId?(h=>`${h.slots} unit${h.slots>1?'s':''} · `)(S.holdings.find(x=>x.id===d.holdingId)):''}${d.lines.reduce((a,l)=>a+l.qty,0).toLocaleString()} ${d.lines.every(l=>/-5$/.test(l.sku))?'bags':'items'} · ${N(dValue(d))} stock value</em></div></div>`:''}
- ${shop&&d.holdingId?`<div class="u-code u-info" style="border-style:solid"><div style="display:flex;flex-direction:column;gap:4px"><span>${d.kind==='restock'?'<b style="color:#1D4107">Restock</b> · cycle '+(d.cycle+1):'<b style="color:#1D4107">First Cycle</b> · opening stock'}</span><b style="font-size:18px;letter-spacing:0">${esc(d.lines.map(l=>`${l.qty.toLocaleString()} bags of ${sku(l.sku).size} ${sku(l.sku).name.replace(/\s*\(.*\)/,'')}`).join(' + '))}</b></div><span>Pushed automatically from ${esc(supName(d))}'s units assigned to this mart.</span></div>`:''}
+ ${shop&&d.holdingId?`<div class="oc-stock"><div class="oc-tags">${d.kind==='restock'?`<span class="oc-pill rs">Restock</span><span class="oc-pill">Cycle ${d.cycle+1}</span>`:`<span class="oc-pill c1">First cycle</span><span class="oc-pill">Opening stock</span>`}</div><div class="oc-lines">${d.lines.map(l=>{const k=sku(l.sku);return `<div>${k.img?`<img src="${k.img}" alt="">`:`<span class="ph">${ic('box')}</span>`}<p><strong>${l.qty.toLocaleString()}</strong><small>bags of ${k.size} ${esc(k.name.replace(/\s*\(.*\)/,''))}</small></p></div>`;}).join('')}</div><p class="oc-foot">Pushed automatically from ${esc(supName(d))}'s units assigned to this mart.</p></div>`:''}
  ${shop&&d.status>=1&&d.status<3?(d.issue?`<div class="mr-box warn"><b>Problem reported${d.issue.at?' · '+esc(new Date(d.issue.at).toLocaleString('en-NG',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})):''}</b><span>Tafiki is sorting this out with you. ${d.issue.note?'Your note: “'+esc(d.issue.note)+'”. ':''}If the missing bags turn up, you can still tap <b>All received</b>.</span><div class="u-acts">${fxBtn('All received',`data-a="mrOk" data-id="${d.id}"`,'check')}</div></div>`:`<div class="mr-box"><b>Count the bags, then confirm</b><span>${d.lines.reduce((a,l)=>a+l.qty,0).toLocaleString()} bags are on the way. Check them against the list below when they arrive.</span><div class="u-acts">${fxBtn('All received',`data-a="mrOk" data-id="${d.id}"`,'check')}<button type="button" class="fx-btn light" data-a="mrIssue" data-id="${d.id}">Report a problem</button></div></div>`):''}
  ${shop&&d.status===3&&d.confirmedBy?`<p class="u-note" style="text-align:left;margin:0">Confirmed by ${esc(d.confirmedBy)}.</p>`:''}
- ${role==='investor'&&d.holdingId?(h=>`<div class="u-code u-info" style="border-style:solid"><div style="display:flex;flex-direction:column;gap:4px"><span>${d.kind==='restock'?'<b style="color:#1D4107">Restock</b> · cycle '+(d.cycle+1):'<b style="color:#1D4107">First cycle</b> · initial stock'} for ${h.ref} · ${h.slots} unit${h.slots>1?'s':''}</span><b style="font-size:18px;letter-spacing:0">${esc(d.lines.map(l=>`${l.qty.toLocaleString()} bags of ${sku(l.sku).size} ${sku(l.sku).name.replace(/\s*\(.*\)/,'')}`).join(' + '))}</b></div><span>${d.kind==='restock'?'Part of your original '+h.ref+' investment. Bought again from last cycle’s sales: no new payment, certificate or agreement.':'Bought with your '+N(h.slots*S.st.slotPrice)+' and delivered to '+esc(to)+'.'}</span></div>`)(S.holdings.find(x=>x.id===d.holdingId)):''}
+ ${role==='investor'&&d.holdingId?(h=>`<div class="oc-stock"><div class="oc-tags">${d.kind==='restock'?`<span class="oc-pill rs">Restock</span><span class="oc-pill">Cycle ${d.cycle+1}</span>`:`<span class="oc-pill c1">First cycle</span>`}<span class="oc-pill">${h.ref}</span><span class="oc-pill">${h.slots} unit${h.slots>1?'s':''}</span></div><div class="oc-lines">${d.lines.map(l=>{const k=sku(l.sku);return `<div>${k.img?`<img src="${k.img}" alt="">`:`<span class="ph">${ic('box')}</span>`}<p><strong>${l.qty.toLocaleString()}</strong><small>bags of ${k.size} ${esc(k.name.replace(/\s*\(.*\)/,''))}</small></p></div>`;}).join('')}</div><p class="oc-foot">${d.kind==='restock'?'Part of your original '+h.ref+' investment. Bought again from last cycle’s sales: no new payment, certificate or agreement.':'Bought with your <b>'+N(h.slots*S.st.slotPrice)+'</b> and delivered to '+esc(to)+'.'}</p></div>`)(S.holdings.find(x=>x.id===d.holdingId)):''}
  ${d.form?`<div class="u-acts"><button class="fx-pill" data-a="fxViewForm" data-id="${d.id}">${ic('file')}View delivery form</button></div>`:''}</div>
  <div class="u-card"><h3>Delivery progress</h3>${fxProgress(DSTAT,subs,[0,1,2,3].map(i=>dAt(d,i)),d.status)}</div>
  <div class="u-card"><h3>Items</h3><div class="u-items">${d.lines.map(l=>{const k=sku(l.sku);return `<div>${k.img?`<img src="${k.img}" alt="">`:`<span class="ph">${ic('box')}</span>`}<div><b>${esc(k.name)}</b><span>${esc(k.brand)} · ${k.size}${shop?' · '+N(ws(k))+' each':''}</span></div><strong>× ${l.qty.toLocaleString()}</strong></div>`;}).join('')}</div>
@@ -3750,7 +3807,7 @@ function uiWallet(u){const proc=-S.tx.filter(t=>t.userId===u.id&&t.status==='pro
  <div class="u-hero-side"><div><span>Earned so far</span><b class="num">${N(paidOut(u.id))}</b></div><div><span>On the way</span><b class="num">${N(proc)}</b></div></div>
  <div class="u-acts"><button class="fx-btn light" data-a="withdraw">${ic('out')}Withdraw</button><button class="fx-btn ghost" data-a="stmt">${ic('file')}Download statement</button></div></div>
  ${uSec('History','',`<div class="u-card u-list">${uTxRows(fxTxList(u))||fxEmpty('Nothing yet')}</div>`)}`;}
-function uNotif(u){const list=fxNotes(u);return `<p class="u-note" style="text-align:left;margin:0">Important account updates are also emailed to ${esc(u.email||'your email')}.</p><div class="u-card u-list">${list.length?fxNoteRows(list):fxEmpty('No notifications yet')}</div>`;}
+function uNotif(u){const list=fxNotes(u);return `<p class="u-note" style="text-align:left;margin:0">Important account updates are also emailed to ${esc(u.email||'your email')}.</p><div class="nc-list">${list.length?fxNoteCards(list):`<div class="u-card">${fxEmpty('No notifications yet')}</div>`}</div>`;}
 
 /* ============================== FRANCHISE SHOP ============================== */
 function shopShell(r){
