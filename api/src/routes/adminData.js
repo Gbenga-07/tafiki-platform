@@ -86,14 +86,25 @@ const BACKUP_DIR = () => process.env.BACKUP_DIR || path.join(__dirname, '..', '.
 const DUMP_DIR = () => process.env.DUMP_DIR || path.join(require('os').homedir(), 'backups');
 const NAME_OK = /^[\w.-]+\.(json|sql)\.gz$/;
 const RESTORE_PHRASE = 'RESTORE BACKUP';
+// One file per kind of backup, replaced each time, so the list stays short:
+// daily-backup, manual-backup, before-reset-backup, before-restore-backup.
+const fixedName = (prefix) => `${prefix}-backup.json.gz`;
 async function snapshot(db, prefix) {
   const backup = {}; for (const t of RESET_TABLES) backup[t] = await db(t).select();
   const dir = BACKUP_DIR(); fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}.json.gz`);
-  fs.writeFileSync(file, zlib.gzipSync(JSON.stringify(backup)), { mode: 0o600 });
+  const file = path.join(dir, fixedName(prefix)); const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, zlib.gzipSync(JSON.stringify(backup)), { mode: 0o600 });
+  fs.renameSync(tmp, file); // the old copy is only replaced once the new one is fully written
+  pruneOld(dir, prefix);
   return file;
 }
-const kindOf = (n) => (/^before-reset/.test(n) ? 'Saved before a reset' : /^before-restore/.test(n) ? 'Saved before a restore' : /^manual/.test(n) ? 'Saved by hand' : /^daily/.test(n) ? 'Daily copy' : /\.sql\.gz$/.test(n) ? 'Nightly database copy' : 'Backup');
+// Older dated copies of the same kind (from before backups were kept as one file each).
+function pruneOld(dir, prefix) {
+  let names = []; try { names = fs.readdirSync(dir); } catch (e) { return; }
+  const re = new RegExp('^' + prefix.replace(/[-]/g, '\\-') + '-\\d{4}-\\d\\d-\\d\\dT.*\\.json\\.gz$');
+  for (const n of names) if (re.test(n)) { try { fs.unlinkSync(path.join(dir, n)); } catch (e) { /* ignore */ } }
+}
+const kindOf = (n) => (/^before-reset/.test(n) ? 'Saved before a reset' : /^before-restore/.test(n) ? 'Saved before a restore' : /^manual/.test(n) ? 'Saved by hand' : /^daily/.test(n) ? 'Daily copy · updated every day' : /\.sql\.gz$/.test(n) ? 'Nightly database copy · updated every night' : 'Backup');
 const summaryCache = new Map();
 function summary(file, stat) {
   const key = file + ':' + stat.mtimeMs; if (summaryCache.has(key)) return summaryCache.get(key);
@@ -148,13 +159,22 @@ r.post('/data/backups/:name/restore', superOnly, async (req, res) => {
       { type: 'note', tone: 'bad', title: 'Not expected?', text: 'If you did not expect this, contact your Super Admins straight away.' }], help: false });
   res.json({ ok: true, restored, savedFirst: path.basename(before) });
 });
-// Daily copy (run hourly by jobs.js): one a day, the newest 14 kept.
+// Daily copy (run hourly by jobs.js): one file, refreshed once a day.
+// The nightly database copies made by the server (~/backups/*.sql.gz) are trimmed to the newest one.
+const sameDay = (a, b) => a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
 async function dailyBackup() {
-  const dir = BACKUP_DIR(); const today = new Date().toISOString().slice(0, 10);
-  let names = []; try { names = fs.readdirSync(dir); } catch (e) { names = []; }
-  if (!names.some((n) => n.startsWith('daily-' + today))) await snapshot(getDb(), 'daily');
-  const daily = fs.readdirSync(dir).filter((n) => /^daily-.*\.json\.gz$/.test(n)).sort().reverse();
-  for (const n of daily.slice(14)) fs.unlinkSync(path.join(dir, n));
+  const file = path.join(BACKUP_DIR(), fixedName('daily'));
+  let fresh = false; try { fresh = sameDay(fs.statSync(file).mtime, new Date()); } catch (e) { fresh = false; }
+  if (!fresh) await snapshot(getDb(), 'daily');
+  pruneNightly();
+}
+function pruneNightly() {
+  const dir = DUMP_DIR(); let list = [];
+  try { list = fs.readdirSync(dir).filter((n) => /\.sql\.gz$/.test(n)).map((n) => ({ n, st: fs.statSync(path.join(dir, n)) })); } catch (e) { return; }
+  // Only trim once the newest copy looks complete, so a failed dump never leaves you with nothing.
+  list.sort((a, b) => b.st.mtimeMs - a.st.mtimeMs);
+  if (list.length < 2 || list[0].st.size < 1024) return;
+  for (const x of list.slice(1)) { try { fs.unlinkSync(path.join(dir, x.n)); } catch (e) { /* ignore */ } }
 }
 r.dailyBackup = dailyBackup;
 module.exports = r;

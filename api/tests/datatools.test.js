@@ -43,6 +43,34 @@ test('backups: Super Admin saves, lists, downloads and restores deleted data; a 
   } finally { delete process.env.BACKUP_DIR; delete process.env.DUMP_DIR; fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('backups are one file per kind: saving again replaces it, old dated copies are cleared, the daily copy refreshes each day and nightly dumps are trimmed', async () => {
+  const os = require('os'); const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tafiki-bk1-')); const dump = path.join(dir, 'dumps'); fs.mkdirSync(dump);
+  process.env.BACKUP_DIR = dir; process.env.DUMP_DIR = dump;
+  try {
+    fs.writeFileSync(path.join(dir, 'daily-2026-11-01T02-00-00-000Z.json.gz'), zlib.gzipSync('{}'));
+    fs.writeFileSync(path.join(dir, 'manual-2026-11-02T02-00-00-000Z.json.gz'), zlib.gzipSync('{}'));
+    const a = await sup.post('/api/admin/data/backups'); const b = await sup.post('/api/admin/data/backups');
+    assert.equal(a.body.backup, 'manual-backup.json.gz'); assert.equal(b.body.backup, a.body.backup);
+    const { dailyBackup } = require('../src/routes/adminData');
+    await dailyBackup();
+    const daily = path.join(dir, 'daily-backup.json.gz'); assert.ok(fs.existsSync(daily));
+    const old = new Date(Date.now() - 2 * 86400000); fs.utimesSync(daily, old, old);
+    await dailyBackup(); assert.ok(fs.statSync(daily).mtime > old, 'daily copy refreshed on a new day');
+    assert.deepEqual(fs.readdirSync(dir).filter((n) => n.endsWith('.json.gz')).sort(), ['daily-backup.json.gz', 'manual-backup.json.gz']);
+    // nightly: an empty newest dump never removes the older good one; a full one does
+    fs.writeFileSync(path.join(dump, 'tafiki-2026-11-01.sql.gz'), Buffer.alloc(4000)); fs.utimesSync(path.join(dump, 'tafiki-2026-11-01.sql.gz'), old, old);
+    fs.writeFileSync(path.join(dump, 'tafiki-2026-11-02.sql.gz'), Buffer.alloc(10));
+    await dailyBackup(); assert.equal(fs.readdirSync(dump).length, 2);
+    fs.writeFileSync(path.join(dump, 'tafiki-2026-11-02.sql.gz'), Buffer.alloc(5000));
+    await dailyBackup(); assert.deepEqual(fs.readdirSync(dump), ['tafiki-2026-11-02.sql.gz']);
+    const l = await sup.get('/api/admin/data/backups'); assert.equal(l.body.backups.length, 3);
+    assert.ok(l.body.backups.some((x) => x.kind === 'Daily copy · updated every day'));
+    // restoring the hand-saved copy keeps it and writes the before-restore copy to its own file
+    const rs = await sup.post('/api/admin/data/backups/manual-backup.json.gz/restore').send({ password: 'Passw0rd!', phrase: 'RESTORE BACKUP' }); assert.equal(rs.status, 200);
+    assert.equal(rs.body.savedFirst, 'before-restore-backup.json.gz'); assert.ok(fs.existsSync(path.join(dir, 'manual-backup.json.gz')));
+  } finally { delete process.env.BACKUP_DIR; delete process.env.DUMP_DIR; fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('reset needs the password, then the token and the exact phrase; it backs up, clears data and keeps admins and settings', async () => {
   assert.equal((await fin.post('/api/admin/data/reset/start').send({ password: 'Passw0rd!' })).status, 403);
   assert.equal((await sup.post('/api/admin/data/reset/start').send({ password: 'wrong' })).status, 400);
