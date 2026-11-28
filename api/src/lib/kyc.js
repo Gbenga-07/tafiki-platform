@@ -27,6 +27,18 @@ function validCallback(body) {
   try { return new smile.Signature(e.partnerId, e.apiKey).confirm_signature(body.timestamp, body.signature); } catch { return false; }
 }
 // Approved result codes verify the member automatically; anything else goes to manual review. Never auto-rejects.
+
+// "Your account is verified" email, after an automatic Smile ID check or a manual check by the Tafiki team
+async function sendVerified(u, by) {
+  const smileId = by === 'Smile ID';
+  const retailer = u.role === 'retailer';
+  return sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'account', ref: u.id, subject: 'Your Tafiki account is verified', title: 'Your account is verified',
+    lead: smileId ? 'Smile ID has **confirmed your identity**, so your Tafiki account is now fully verified.' : 'Our team has **checked and verified your identity**, so your Tafiki account is now fully verified.',
+    blocks: [{ type: 'kv', title: 'Verification', rows: [['Name', retailer ? (u.shop || u.name) : u.name], ['Membership number', u.coop_no || ''], ['Checked by', smileId ? 'Smile ID (automatic)' : 'Tafiki team (manual review)'], ['Result', 'Verified'], ['Verified on', K.when()]].filter((r) => r[1]) }],
+    next: retailer ? ['Your mart portal is fully open: deliveries, delivery codes, sales and remittances.', 'Tafiki emails you when a package is assigned to your mart.']
+      : ['Any units you have already paid for are now confirmed, and your **Certificate of Stake** follows by email.', 'You can now withdraw from your wallet to your bank account.', 'You can take part in every member offer from your dashboard.'],
+    cta: { label: retailer ? 'Open my mart portal' : 'Go to my dashboard', url: K.link('login') } });
+}
 async function handleResult(body) {
   const db = getDb(); const e = env();
   const jobId = body.PartnerParams && body.PartnerParams.job_id; if (!jobId) return null;
@@ -38,11 +50,7 @@ async function handleResult(body) {
     await db('users').where({ id: u.id }).update({ kyc_status: 'verified', updated_at: new Date() });
     await activity.log({ type: 'system' }, 'kyc.verified', { type: 'user', id: u.id }, { provider: 'Smile ID', code });
     await require('./units').onKycVerified(u.id, { type: 'system' });
-    await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'account', ref: u.id, subject: 'Your identity is verified', title: 'Your identity is verified',
-      lead: 'Smile ID has **confirmed your identity**. You can now take part in every member offer, and any units you have already paid for are now confirmed.',
-      blocks: [{ type: 'kv', title: 'Identity check', rows: [['Name', u.name], ['Membership number', u.coop_no || ''], ['Checked by', 'Smile ID'], ['Result', 'Verified'], ['Verified on', K.when()]] }],
-      next: ['Your Certificate of Stake follows by email for any units you have paid for.', 'You can now withdraw from your wallet to your bank account.', 'Buy units in any open FOODCORE Mart from your dashboard.'],
-      cta: { label: 'Go to my dashboard', url: K.link('login') } });
+    await sendVerified(u, 'Smile ID');
   } else if (!ok) {
     await activity.log({ type: 'system' }, 'kyc.review', { type: 'user', id: u.id }, { provider: 'Smile ID', code, text: body.ResultText });
     await sendEmail({ to: u.email, name: u.name.split(' ')[0], category: 'account', ref: u.id, subject: 'We are reviewing your identity check', title: 'Your identity check is being reviewed',
@@ -53,4 +61,4 @@ async function handleResult(body) {
   }
   return db('kyc_checks').where({ id: chk.id }).first();
 }
-module.exports = { start, validCallback, handleResult, setTokenImpl };
+module.exports = { sendVerified, start, validCallback, handleResult, setTokenImpl };

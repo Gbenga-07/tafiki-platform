@@ -54,7 +54,11 @@ r.patch('/:id', requirePerm('members'), async (req, res) => {
       cta: { label: 'Set my password', url: K.link('login') } });
     return res.json({ user: present.userFull(await db('users').where({ id: u.id }).first()), changed });
   }
-  const fields = changed.map((k) => LABELS[k]).join(', ');
+  const verifiedNow = changed.includes('kyc_status') && upd.kyc_status === 'verified';
+  if (verifiedNow) await require('../lib/kyc').sendVerified({ ...u, ...upd }, 'Tafiki team');
+  const rest = verifiedNow ? changed.filter((k) => k !== 'kyc_status') : changed;
+  if (!rest.length) return res.json({ user: present.userFull(await db('users').where({ id: u.id }).first()), changed });
+  const fields = rest.map((k) => LABELS[k]).join(', ');
   for (const to of [...new Set([u.email, upd.email || u.email])]) await sendEmail({ to, name: u.name.split(' ')[0], category: 'account', subject: 'Your Tafiki account details were updated', ref: u.id, title: 'Your account details were updated',
     lead: 'Some details on your Tafiki account were updated by our team.',
     blocks: [{ type: 'kv', title: 'What changed', rows: [['Fields updated', fields], ['Updated', K.when()], ['Account', u.name + (u.coop_no ? ' · ' + u.coop_no : '')]] },

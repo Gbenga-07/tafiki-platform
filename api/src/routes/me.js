@@ -11,6 +11,19 @@ const otp = require('../lib/otp');
 const r = express.Router();
 r.use(requireUser);
 r.get('/', (req, res) => res.json({ user: present.user(req.user) }));
+// Notifications: the member's or mart's important account updates (the same ones they are emailed), newest first
+r.get('/notifications', async (req, res) => {
+  const rows = await getDb()('emails').where({ to_email: req.user.email, notify: true }).orderBy('created_at', 'desc').limit(150).select('id', 'category', 'subject', 'lead', 'created_at', 'receipt_no');
+  const seen = req.user.notes_seen_at ? new Date(req.user.notes_seen_at).getTime() : 0;
+  const notes = rows.map((e) => ({ id: e.id, category: e.category, title: String(e.subject || '').replace(/ · [A-Z]+-[\w-]+$/, ''), text: e.lead || '', at: e.created_at, receiptNo: e.receipt_no || null, unread: new Date(e.created_at).getTime() > seen }));
+  res.json({ notes, unread: notes.filter((n) => n.unread).length });
+});
+r.post('/notifications/seen', async (req, res) => {
+  const db = getDb(); // marks seen up to the newest notification itself, so one arriving a moment later still shows as new
+  const last = await db('emails').where({ to_email: req.user.email, notify: true }).orderBy('created_at', 'desc').first('created_at');
+  if (last) await db('users').where({ id: req.user.id }).update({ notes_seen_at: last.created_at });
+  res.json({ ok: true });
+});
 const Update = z.object({ phone: z.string().trim().min(7).max(40).optional(), city: z.string().trim().max(80).optional(),
   bank: z.object({ name: z.string().trim().min(2).max(80), account: z.string().regex(/^\d{10}$/), accountName: z.string().trim().min(3).max(120) }).optional() });
 // Email codes: { purpose: withdrawal | bank_change }
