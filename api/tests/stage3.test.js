@@ -32,19 +32,19 @@ test('stages move automatically; In Transit emails the delivery code to the mart
   assert.equal(await ops.autoAdvance(), 1);
   await db('delivery_log').whereIn('delivery_id', db('deliveries').where({ bundle_code: delivery.id }).select('id')).update({ at: new Date(Date.now() - 7 * 3600e3) });
   assert.equal(await ops.autoAdvance(), 1);
-  assert.equal(await ops.autoAdvance(), 0); // last step needs the code
+  assert.equal(await ops.autoAdvance(), 0); // the last step is the mart confirming receipt
   const e = await db('emails').where({ to_email: 'kemi@example.com' }).where('subject', 'like', '%In Transit').first(); assert.ok(e, 'in-transit email to the mart');
-  assert.match(e.body_text, /YOUR DELIVERY CODE: \d{6}/); assert.equal(await db('sms').count({ n: '*' }).first().then((r) => Number(r.n)), 0, 'no SMS');
+  assert.doesNotMatch(e.body_text, /DELIVERY CODE/); assert.match(e.body_text, /All received/); assert.equal(await db('sms').count({ n: '*' }).first().then((r) => Number(r.n)), 0, 'no SMS');
 });
 
-test('store sees its code; driver link completes only with the right code', async () => {
-  const sd = (await store.get('/api/store/deliveries/' + delivery.id)).body.delivery; assert.match(sd.deliveryCode, /^\d{6}$/);
+test('no delivery codes: the driver link only shows the drop; the mart confirms in its portal', async () => {
+  const sd = (await store.get('/api/store/deliveries/' + delivery.id)).body.delivery; assert.equal(sd.deliveryCode, undefined);
   const full = (await logi.get('/api/admin/deliveries/' + delivery.id)).body.delivery; const token = full.driverLink.split('t=')[1];
-  const info = await agent(app).get('/api/driver/' + token); assert.equal(info.body.delivery.store, 'FOODCORE Bodija'); assert.equal(info.body.delivery.code, delivery.code);
+  const info = await agent(app).get('/api/driver/' + token); assert.equal(info.body.delivery.store, 'FOODCORE Bodija'); assert.equal(info.body.delivery.code, delivery.code); assert.equal(info.body.delivery.confirmInPortal, true);
   global.__token = token;
-  assert.equal((await agent(app).post('/api/driver/' + token + '/complete').send({ code: '000000' === sd.deliveryCode ? '111111' : '000000' })).status, 400);
-  const ok = await agent(app).post('/api/driver/' + token + '/complete').send({ code: sd.deliveryCode }); assert.equal(ok.status, 200);
-  assert.equal((await store.get('/api/store/deliveries/' + delivery.id)).body.delivery.deliveryCode, undefined);
+  assert.equal((await agent(app).post('/api/driver/' + token + '/complete').send({ code: '123456' })).status, 410);
+  assert.equal((await logi.post('/api/admin/deliveries/' + delivery.id + '/complete').send({ code: '123456' })).status, 410);
+  const ok = await store.post('/api/store/deliveries/' + delivery.id + '/receive').send({ ok: true }); assert.equal(ok.status, 200);
   assert.equal((await agent(app).get('/api/driver/' + token)).body.delivery.store, undefined);
   const acc = (await store.get('/api/store/account')).body.account; assert.equal(acc.stockReceived, 4000000); assert.equal(acc.onShelf, 4000000); assert.equal(acc.cycle.k, 1);
   assert.match((await lastEmail('ada@example.com')).subject, /Delivered/);
@@ -75,15 +75,12 @@ test('day-28 audit, remittance, reconciliation, then restock', async () => {
   acc = (await store.get('/api/store/account')).body.account; assert.equal(acc.stockReceived, 5600000); assert.equal(acc.onShelf, 4000000); // back to the original level
 });
 
-test('manual store order and wrong-code lock', async () => {
+test('manual store order; an admin can still complete it with a reason', async () => {
   const o = await logi.post('/api/admin/deliveries').send({ storeUserId: storeId, items: [{ sku: 'garri-5', qty: 50 }] }); assert.equal(o.status, 201); assert.match(o.body.delivery.code, /^TR-\d+$/);
   await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/advance'); await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/advance');
-  for (let i = 0; i < 5; i++) await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/complete').send({ code: 'xx' });
-  assert.equal((await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/complete').send({ code: 'xx' })).status, 423);
-  assert.match((await lastEmail('logi@tafiki.com')).subject, /locked/);
-  assert.equal((await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/reissue-code')).status, 200);
-  const code = (await store.get('/api/store/deliveries/' + o.body.delivery.id)).body.delivery.deliveryCode;
-  assert.equal((await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/complete').send({ code })).status, 200);
+  assert.equal((await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/reissue-code')).status, 410, 'no codes to reissue');
+  const r = await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/override').send({ reason: 'Mart manager confirmed by phone, portal down' }); assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.delivery.confirmedBy, /^Console: /);
 });
 
 test('nothing sold means no restock, and the next cycle starts', async () => {

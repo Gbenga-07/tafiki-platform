@@ -10,7 +10,7 @@ const r = express.Router();
 r.use(requireUser, (req, res, next) => (req.user.role === 'retailer' ? next() : next(new HttpError(403, 'This is for FOODCORE Mart accounts.'))));
 const shapeD = async (d, withCode) => ({ id: d.members ? d.code : d.id, code: d.code, stakes: d.members ? d.members.length : undefined, confirmedBy: d.confirmed_by || null, issue: d.issue_at ? { at: d.issue_at, by: d.issue_by, note: d.issue_note, lines: JSON.parse(d.issue_lines || '[]') } : null, kind: d.kind, cycle: d.cycle, stage: d.status, stageName: ops.STAGES[d.status], driver: d.driver, vehicle: d.vehicle, value: Number(d.value), deliveredAt: d.delivered_at, createdAt: d.created_at,
   lines: d.members ? (await ops.bundleLines(d.members)).map(({ sku, name, size, brand, qty }) => ({ sku, name, size, brand, qty })) : await getDb()('delivery_lines').where({ delivery_id: d.id }).select('sku', 'name', 'size', 'brand', 'qty'), log: await getDb()('delivery_log').where({ delivery_id: d.id }).select('stage', 'at'),
-  deliveryCode: withCode && d.status < 3 ? box.open(d.code_enc) : undefined });
+  });
 r.get('/account', async (req, res) => res.json({ account: await ops.storeAccount(req.user.id), packages: await getDb()('packages').where({ store_user_id: req.user.id }).select('id', 'name', 'area', 'city', 'state', 'route', 'stage', 'units_total', 'opened_at', 'target_open'), units: Number((await getDb()('holdings').whereIn('package_id', getDb()('packages').where({ store_user_id: req.user.id }).select('id')).whereIn('status', ['active', 'redeem']).sum({ s: 'units' }).first()).s) || 0 }));
 // a bundle (the stock for every stake, sent together) shows as one delivery with one code
 const bundled = async (d) => (d.bundle_code ? ops.bundleView(d.bundle_code) : d);

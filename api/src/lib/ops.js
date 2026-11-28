@@ -45,14 +45,14 @@ async function notifyMart(d, linesOverride, count) {
   const next = {
     0: ['The order is packed and checked against the order list.', `A driver collects it, usually within ${L.stageHours || 6} hours.`, 'You receive an email at every stage until delivery.'],
     1: [`The driver heads to ${store.shop}.`, 'You will receive an email with your **delivery code** when the order is in transit. It is also in your mart portal.', 'Make sure someone authorised is at the mart to receive it.'],
-    2: ['**Count the bags** against the list above.', 'All correct? Tap **All received** in your mart portal. The driver can leave once you have confirmed.', 'Short or damaged? Tap **Report a problem** instead of confirming. Tafiki sorts it out with you.', 'No access to the portal? Give the driver the delivery code below, **only once the count is correct**.'],
+    2: ['**Count the bags** against the list above.', 'All correct? Tap **All received** in your mart portal. The driver can leave once you have confirmed.', 'Short or damaged? Tap **Report a problem** instead of confirming. Tafiki sorts it out with you.'],
     3: ['Record your sales as usual through your Tafiki mart portal.', `Your stock is audited on day ${L.auditDay || 28} of the cycle and the remittance is settled.`, 'The next restock is released after reconciliation.'] }[si];
   let receipt;
   if (si === 3) { const acc = await storeAccount(store.id);
     receipt = { title: 'Goods received note', amount: Number(d.value), direction: 'goods', rows: [['Received by', store.shop], ['Order', `#${d.code} · ${type}`], ['Bags received', bags.toLocaleString()], ['Delivered', K.when(at(3))], ['Driver', driver], ['Stock on consignment now', K.N(acc.onShelf)]], total: ['Value received', K.N(d.value)], note: 'The stock stays Tafiki property until sold. Sales are recorded at the day-28 audit and become remittance due.' }; }
   await sendEmail({ to: store.email, name: 'Mart Manager', category: 'delivery', ref: d.code, subject: `Order #${d.code}: ${st}`, title: `Order #${d.code}: ${st}`, tag: st, preheader: `${bags.toLocaleString()} bags for ${store.shop} · ${st}`,
     lead, blocks: [{ type: 'kv', title: 'Order details', rows: [['Order number', '#' + d.code], ['Order type', type], ['Delivering to', store.shop], ['Supplied by', 'FOODCORE Cooperative Limited · Tafiki Distribution Centre'], ['Driver', si >= 1 ? driver : ''], ['Status', st]] }, items(true), steps,
-      si === 2 ? { type: 'code', title: 'Your delivery code', code: box.open(d.code_enc), sub: 'Give it to the driver only after counting the bags' } : null,
+      null,
       si === 2 ? { type: 'note', tone: 'warn', title: 'Keep your delivery code private', text: 'The same code is in your mart portal. Never share it before the bags are counted. Tafiki staff will never ask for it.' } : null],
     receipt, next, cta: si === 2 ? { label: 'Confirm receipt in my portal', url: K.link('shop-orders') } : undefined, help: `Questions about this order? Reply to this email quoting **#${d.code}**, or contact Tafiki Operations at **support@tafiki.com**.`, team: 'Tafiki Operations' });
 }
@@ -145,38 +145,9 @@ async function markDelivered(d, how, actor, inner) {
   await notifyStage(nd);
   return nd;
 }
-async function completeWithCode(d, code, by) {
-  const db = getDb(); const L = await getSetting('logistics');
-  if (d.status === 3) throw bad('This delivery is already complete.');
-  if (d.status < 2) throw bad('The delivery must be in transit before it can be completed.');
-  if (d.code_attempts >= L.maxCodeAttempts) throw new HttpError(423, 'Too many wrong codes. Tafiki operations has been alerted.');
-  if (sha256(d.id + '|' + String(code || '').trim()) !== d.code_hash) {
-    await db('deliveries').where({ id: d.id }).increment('code_attempts', 1);
-    const fresh = await db('deliveries').where({ id: d.id }).first();
-    if (fresh.code_attempts === L.maxCodeAttempts) { await activity.log(null, 'delivery.code_locked', { type: 'delivery', id: d.id }, { code: d.code }); const admins = await db('admins').where({ status: 'active' }).whereIn('role', ['Super Admin', 'Operations Manager', 'Logistics Officer']); for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: d.code, subject: `Delivery #${d.code} locked after wrong codes`,
-      title: 'A delivery is locked', lead: `Too many wrong delivery codes were entered for order **#${d.code}**, so it is locked to protect the stock.`,
-      blocks: [{ type: 'kv', title: 'Delivery', rows: [['Order', '#' + d.code], ['Mart', (await db('users').where({ id: d.store_user_id }).first() || {}).shop || ''], ['Driver', d.driver ? `${d.driver}${d.vehicle ? ' · ' + d.vehicle : ''}` : ''], ['Value', K.N(d.value)], ['Wrong attempts', String(L.maxCodeAttempts)], ['Locked', K.when()]] },
-        { type: 'note', tone: 'bad', text: 'Do not let the driver leave the stock until this is resolved.' }],
-      next: ['Call the mart manager and the driver to confirm the bags were counted.', 'Reissue the delivery code, or complete the delivery in the console with a written reason.'],
-      cta: { label: 'Open the Tafiki Console', url: K.consoleLink() }, help: 'This is an automatic alert for Super Admins, Operations Managers and Logistics Officers.' }); }
-    throw bad('That delivery code is not correct.');
-  }
-  return markDelivered(d, { by, who: String(by || '').startsWith('admin') ? 'Delivery code, entered in the console' : 'Delivery code, entered by the driver' }, null);
-}
-async function reissueCode(id, actor) {
-  const db = getDb(); const d = await db('deliveries').where({ id }).first(); if (!d) throw new HttpError(404, 'Delivery not found.');
-  if (d.bundle_code) return reissueBundle(d.bundle_code, actor);
-  if (d.status === 3) throw bad('This delivery is complete.');
-  const secret = randomCode(6);
-  await db('deliveries').where({ id }).update({ code_hash: sha256(id + '|' + secret), code_enc: box.seal(secret), code_attempts: 0 });
-  const store = await db('users').where({ id: d.store_user_id }).first();
-  await sendEmail({ to: store.email, name: 'Mart Manager', category: 'delivery', ref: d.code, subject: `New delivery code for order #${d.code}`, title: 'Your new delivery code', tag: 'New code',
-    lead: `A new delivery code has been issued for order **#${d.code}** to **${store.shop}**. Earlier codes no longer work.`,
-    blocks: [{ type: 'code', title: 'Delivery code', code: secret, sub: 'Give it to the driver only after counting the bags' }, { type: 'kv', title: 'Order', rows: [['Order number', '#' + d.code], ['Delivering to', store.shop], ['Value', K.N(d.value)], ['Issued', K.when()]] },
-      { type: 'note', tone: 'warn', title: 'Keep it private', text: 'The same code is in your mart portal. Tafiki staff will never ask for it.' }] });
-  await activity.log(actor, 'delivery.code_reissued', { type: 'delivery', id });
-  return true;
-}
+const NO_CODES = () => new HttpError(410, 'Delivery codes are no longer used. The mart confirms receipt in its Tafiki portal.');
+async function completeWithCode() { throw NO_CODES(); }
+async function reissueCode() { throw NO_CODES(); }
 
 async function storeAccount(storeUserId) {
   const db = getDb();
@@ -374,18 +345,6 @@ async function deliverBundle(code, how, actor) {
   await notifyBundle(code);
   return done[0];
 }
-async function reissueBundle(code, actor) {
-  const db = getDb(); const ms = await bundleMembers(code); if (ms.every((m) => m.status === 3)) throw bad('This delivery is complete.');
-  const secret = randomCode(6);
-  for (const m of ms) await db('deliveries').where({ id: m.id }).update({ code_hash: sha256(m.id + '|' + secret), code_enc: box.seal(secret), code_attempts: 0 });
-  const store = await db('users').where({ id: ms[0].store_user_id }).first(); const value = ms.reduce((a, m) => a + Number(m.value), 0);
-  await sendEmail({ to: store.email, name: 'Mart Manager', category: 'delivery', ref: code, subject: `New delivery code for order #${code}`, title: 'Your new delivery code', tag: 'New code',
-    lead: `A new delivery code has been issued for order **#${code}** to **${store.shop}**. Earlier codes no longer work.`,
-    blocks: [{ type: 'code', title: 'Delivery code', code: secret, sub: 'Give it to the driver only after counting the bags' }, { type: 'kv', title: 'Order', rows: [['Order number', '#' + code], ['Delivering to', store.shop], ['Value', K.N(value)], ['Issued', K.when()]] },
-      { type: 'note', tone: 'warn', title: 'Keep it private', text: 'The same code is in your mart portal. Tafiki staff will never ask for it.' }] });
-  await activity.log(actor, 'delivery.code_reissued', { type: 'delivery', id: ms[0].id }, { bundle: code });
-  return true;
-}
 
 // ---------- the mart confirms receipt, or reports a problem ----------
 async function martReceive(d, store) {
@@ -416,4 +375,4 @@ async function martReportIssue(d, store, { lines, note }) {
     cta: { label: 'Open the Tafiki Console', url: K.consoleLink() }, help: 'This is an automatic alert for Super Admins, Operations Managers and Logistics Officers.' });
   return db('deliveries').where({ id: ids[0] }).first();
 }
-module.exports = { martReceive, martReportIssue, newBundleCode, bundleMembers, bundleLines, bundleView, advanceBundle, deliverBundle, reissueBundle, notifyBundle, STAGES, createDelivery, deliveriesForPackage, linesForUnits, advance, markDelivered, completeWithCode, reissueCode, storeAccount, recordAudit, reportRemittance, decideRemittance, reconcile, releaseRestocks, autoAdvance, auditReminders, ensureCycle };
+module.exports = { martReceive, martReportIssue, newBundleCode, bundleMembers, bundleLines, bundleView, advanceBundle, deliverBundle, notifyBundle, STAGES, createDelivery, deliveriesForPackage, linesForUnits, advance, markDelivered, completeWithCode, reissueCode, storeAccount, recordAudit, reportRemittance, decideRemittance, reconcile, releaseRestocks, autoAdvance, auditReminders, ensureCycle };

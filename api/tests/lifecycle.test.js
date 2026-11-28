@@ -125,13 +125,11 @@ test('6. package opens once even when clicked 3 times; the delivery code is emai
   // two job runners at once move the bundle one step at a time
   for (let i = 0; i < 2; i++) { await db('delivery_log').update({ at: new Date(Date.now() - 7 * 3600e3) }); const n = await all([ops.autoAdvance(), ops.autoAdvance()]); assert.equal(n[0] + n[1], 1); }
   const martMails = await db('emails').where({ to_email: 'mart@example.com' }).where('subject', 'like', '%In Transit');
-  const e = await db('emails').where({ ref: d.code }).where('subject', 'like', '%In Transit').where('body_text', 'like', '%YOUR DELIVERY CODE%');
-  assert.equal(e.length, 1, 'one code email for the whole bundle'); const code = e[0].body_text.match(/YOUR DELIVERY CODE: (\d{6})/)[1];
+  const e = await db('emails').where({ ref: d.code }).where('subject', 'like', '%In Transit'); assert.equal(e.length, 1, 'one email for the whole bundle'); assert.doesNotMatch(e[0].body_text, /DELIVERY CODE/);
   const holderMails = await db('emails').where('ref', 'like', 'SO-%').where('subject', 'like', '%In Transit'); assert.equal(holderMails.length, N, 'each member tracks their own order');
   assert.equal((await store.get('/api/store/deliveries')).body.deliveries.filter((x) => x.kind === 'stake').length, 1, 'the mart sees one delivery');
-  assert.equal((await store.get('/api/store/deliveries/' + d.id)).body.delivery.deliveryCode, code);
-  const full = (await logi.get('/api/admin/deliveries/' + d.id)).body.delivery; const token = full.driverLink.split('t=')[1];
-  const race = await all([agent(app).post('/api/driver/' + token + '/complete').send({ code }), logi.post('/api/admin/deliveries/' + d.id + '/complete').send({ code }), agent(app).post('/api/driver/' + token + '/complete').send({ code })]);
+  // the mart taps All received three times at once: the bundle completes once
+  const race = await all([0, 1, 2].map(() => store.post('/api/store/deliveries/' + d.id + '/receive').send({ ok: true })));
   assert.equal(race.filter((r) => r.status === 200).length, 1, race.map((r) => r.status).join(','));
   assert.equal(Number((await db('deliveries').where({ bundle_code: d.code, status: 3 }).count({ n: '*' }).first()).n), N, 'every order in the bundle is delivered');
   void martMails;
@@ -139,19 +137,14 @@ test('6. package opens once even when clicked 3 times; the delivery code is emai
   const active = await db('holdings').where({ package_id: pkgId, status: 'active' }).count({ n: '*' }).first(); assert.equal(Number(active.n), N);
 });
 
-test('7. a mart order: double clicks move one stage; the code is emailed and in the portal; a reissued code replaces it', async () => {
+test('7. a mart order: double clicks move one stage; the mart confirms it in its portal', async () => {
   const o = await logi.post('/api/admin/deliveries').send({ storeUserId: storeId, items: [{ sku: 'garri-5', qty: 20 }] }); assert.equal(o.status, 201);
   // a double click on "next stage" moves it one stage, not two
   const dbl = await all([0, 1].map(() => logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/advance').send({ fromStage: 0 })));
   assert.deepEqual(dbl.map((r) => r.status).sort(), [200, 409]);
   const adv = await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/advance').send({ fromStage: 1 }); assert.equal(adv.status, 200);
-  const code = (await store.get('/api/store/deliveries/' + o.body.delivery.id)).body.delivery.deliveryCode; assert.match(code, /^\d{6}$/);
-  const mail = await db('emails').where({ ref: o.body.delivery.code }).where('subject', 'like', '%In Transit').where('body_text', 'like', '%YOUR DELIVERY CODE%').first(); assert.ok(mail); assert.ok(mail.body_text.includes(code));
-  assert.equal((await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/reissue-code')).status, 200);
-  const code2 = (await store.get('/api/store/deliveries/' + o.body.delivery.id)).body.delivery.deliveryCode;
-  assert.ok(await db('emails').where({ ref: o.body.delivery.code }).where('subject', 'like', 'New delivery code%').where('body_text', 'like', '%' + code2 + '%').first(), 'new code emailed');
-  assert.equal((await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/complete').send({ code })).status, 400, 'old code no longer works');
-  assert.equal((await logi.post('/api/admin/deliveries/' + o.body.delivery.id + '/complete').send({ code: code2 })).status, 200);
+  const mail = await db('emails').where({ ref: o.body.delivery.code }).where('subject', 'like', '%In Transit').first(); assert.ok(mail); assert.match(mail.body_text, /All received/);
+  const r = await store.post('/api/store/deliveries/' + o.body.delivery.id + '/receive').send({ ok: true }); assert.equal(r.status, 200); assert.equal(r.body.delivery.stage, 3);
 });
 
 test('8. day 28: sales, audit, remittance and reconciliation, with double clicks; restock replaces what sold', async () => {

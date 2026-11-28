@@ -80,11 +80,10 @@ test('fill the package; opening it twice at once creates one set of deliveries',
   assert.equal((await db('deliveries').where({ package_id: global.__pkg.id, kind: 'stake' })).length, 10);
 });
 
-test('a delivery code entered 5 times at once completes the delivery once', async () => {
-  const d = await db('deliveries').where({ package_id: global.__pkg.id }).first();
-  await logi.post('/api/admin/deliveries/' + d.id + '/advance'); await logi.post('/api/admin/deliveries/' + d.id + '/advance');
-  const code = (await storeA.get('/api/store/deliveries/' + d.id)).body.delivery.deliveryCode; const token = d.driver_token;
-  const rs = await Promise.all([...Array(5)].map(() => agent(app).post('/api/driver/' + token + '/complete').send({ code })));
+test('All received tapped 5 times at once completes the delivery once', async () => {
+  const d = await db('deliveries').where({ package_id: global.__pkg.id }).first(); const id = d.bundle_code || d.id;
+  await logi.post('/api/admin/deliveries/' + id + '/advance'); await logi.post('/api/admin/deliveries/' + id + '/advance');
+  const rs = await Promise.all([...Array(5)].map(() => storeA.post('/api/store/deliveries/' + id + '/receive').send({ ok: true })));
   assert.equal(rs.filter((r) => r.status === 200).length, 1); assert.equal(rs.filter((r) => r.status >= 500).length, 0);
   assert.equal((await db('delivery_log').where({ delivery_id: d.id, stage: 3 })).length, 1);
   assert.equal((await db('store_cycles').where({ store_user_id: storeIdA })).length, 1);

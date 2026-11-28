@@ -139,7 +139,7 @@ test('5. payments by stage: each member pays the ₦50,000 fee once, on their fi
   assert.equal(fees.filter((r) => Number(r.f) === FEE).length, paidUsers.size, 'every paying member paid the fee exactly once');
 });
 
-test('6. full and confirmed marts open (double-clicked); marts without a manager phone get one, then codes are reissued', async () => {
+test('6. full and confirmed marts open (double-clicked); marts without a manager phone get one', async () => {
   const toOpen = marts.filter((m) => ['full-confirmed', 'opened', 'delivered', 'paid-out', 'redeemed'].includes(m.plan));
   const notReady = marts.filter((m) => ['full-review', 'full-mixed', 'part-paid'].includes(m.plan));
   for (const m of notReady) assert.equal((await sup.post('/api/admin/packages/' + m.id + '/open').send({})).status, 400, m.area);
@@ -161,10 +161,7 @@ async function deliverAll(m) {
   assert.ok(ds.length > 0, 'deliveries for ' + m.area);
   for (let i = 0; i < 3; i++) { await db('delivery_log').update({ at: new Date(Date.now() - 7 * 3600e3) }); await ops.autoAdvance(); }
   for (const d of ds) {
-    await logi.post('/api/admin/deliveries/' + d.id + '/reissue-code');
-    const t = await db('emails').where({ ref: d.code }).where('subject', 'like', 'New delivery code%').orderBy('created_at', 'desc').first(); assert.ok(t, 'code email ' + d.code);
-    const code = t.body_text.match(/DELIVERY CODE: (\d{6})/)[1];
-    const r = await logi.post('/api/admin/deliveries/' + d.id + '/complete').send({ code }); assert.equal(r.status, 200, m.area + ' ' + JSON.stringify(r.body));
+    const r = await logi.post('/api/admin/deliveries/' + d.id + '/override').send({ reason: 'Test data: mart manager confirmed receipt' }); assert.equal(r.status, 200, m.area + ' ' + JSON.stringify(r.body));
   }
 }
 
