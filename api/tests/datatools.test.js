@@ -21,54 +21,50 @@ test('only a Super Admin can export; the export has no secrets', async () => {
   const txt = JSON.stringify(r.body); assert.ok(!/password_hash|code_hash|code_enc|body_html/.test(txt));
 });
 
-test('backups: Super Admin saves, lists, downloads and restores deleted data; a copy is saved before restoring', async () => {
-  const os = require('os'); const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tafiki-bk-')); process.env.BACKUP_DIR = dir; process.env.DUMP_DIR = path.join(dir, 'none');
+test('backups: one file that grows: day 2 keeps day 1, nothing is duplicated, deleted data comes back on restore', async () => {
+  const os = require('os'); const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tafiki-bk-')); const dump = path.join(dir, 'dumps'); fs.mkdirSync(dump);
+  process.env.BACKUP_DIR = dir; process.env.DUMP_DIR = dump;
+  const read = () => JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(dir, 'tafiki-backup.json.gz'))).toString('utf8'));
+  const files = () => fs.readdirSync(dir).filter((n) => n.endsWith('.json.gz'));
   try {
     assert.equal((await fin.get('/api/admin/data/backups')).status, 403);
-    const saved = await sup.post('/api/admin/data/backups'); assert.equal(saved.status, 201);
-    const l = await sup.get('/api/admin/data/backups'); assert.equal(l.status, 200);
-    const b = l.body.backups.find((x) => x.name === saved.body.backup); assert.ok(b && b.restorable); assert.equal(b.kind, 'Saved by hand'); assert.equal(b.counts.members, 1); assert.equal(b.counts.packages, 1);
-    const dl = await sup.get('/api/admin/data/backups/' + saved.body.backup).buffer(true).parse((res, cb) => { const c = []; res.on('data', (x) => c.push(x)); res.on('end', () => cb(null, Buffer.concat(c))); });
-    assert.equal(dl.status, 200); assert.ok(JSON.parse(zlib.gunzipSync(dl.body)).users.some((u) => u.email === 'ada@example.com'));
-    assert.equal((await sup.get('/api/admin/data/backups/..%2F..%2F.env')).status, 404);
-    await db('packages').del(); assert.equal(Number((await db('packages').count({ n: '*' }).first()).n), 0);
-    assert.equal((await sup.post('/api/admin/data/backups/' + saved.body.backup + '/restore').send({ password: 'wrong', phrase: 'RESTORE BACKUP' })).status, 400);
-    assert.equal((await sup.post('/api/admin/data/backups/' + saved.body.backup + '/restore').send({ password: 'Passw0rd!', phrase: 'restore' })).status, 400);
-    const rs = await sup.post('/api/admin/data/backups/' + saved.body.backup + '/restore').send({ password: 'Passw0rd!', phrase: 'RESTORE BACKUP' }); assert.equal(rs.status, 200, JSON.stringify(rs.body));
-    assert.equal(Number((await db('packages').count({ n: '*' }).first()).n), 1, 'deleted package is back');
-    assert.ok(await db('users').where({ email: 'ada@example.com' }).first());
-    assert.ok((await sup.get('/api/admin/data/backups')).body.backups.some((x) => x.kind === 'Saved before a restore' && x.counts.packages === 0));
-    const daily = require('../src/routes/adminData').dailyBackup; await daily(); await daily();
-    assert.equal(fs.readdirSync(dir).filter((n) => n.startsWith('daily-')).length, 1, 'one daily copy a day');
-  } finally { delete process.env.BACKUP_DIR; delete process.env.DUMP_DIR; fs.rmSync(dir, { recursive: true, force: true }); }
-});
-
-test('backups are one file per kind: saving again replaces it, old dated copies are cleared, the daily copy refreshes each day and nightly dumps are trimmed', async () => {
-  const os = require('os'); const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tafiki-bk1-')); const dump = path.join(dir, 'dumps'); fs.mkdirSync(dump);
-  process.env.BACKUP_DIR = dir; process.env.DUMP_DIR = dump;
-  try {
-    fs.writeFileSync(path.join(dir, 'daily-2026-11-01T02-00-00-000Z.json.gz'), zlib.gzipSync('{}'));
-    fs.writeFileSync(path.join(dir, 'manual-2026-11-02T02-00-00-000Z.json.gz'), zlib.gzipSync('{}'));
-    const a = await sup.post('/api/admin/data/backups'); const b = await sup.post('/api/admin/data/backups');
-    assert.equal(a.body.backup, 'manual-backup.json.gz'); assert.equal(b.body.backup, a.body.backup);
-    const { dailyBackup } = require('../src/routes/adminData');
-    await dailyBackup();
-    const daily = path.join(dir, 'daily-backup.json.gz'); assert.ok(fs.existsSync(daily));
-    const old = new Date(Date.now() - 2 * 86400000); fs.utimesSync(daily, old, old);
-    await dailyBackup(); assert.ok(fs.statSync(daily).mtime > old, 'daily copy refreshed on a new day');
-    assert.deepEqual(fs.readdirSync(dir).filter((n) => n.endsWith('.json.gz')).sort(), ['daily-backup.json.gz', 'manual-backup.json.gz']);
-    // nightly: an empty newest dump never removes the older good one; a full one does
-    fs.writeFileSync(path.join(dump, 'tafiki-2026-11-01.sql.gz'), Buffer.alloc(4000)); fs.utimesSync(path.join(dump, 'tafiki-2026-11-01.sql.gz'), old, old);
+    // an old dated copy from the previous version is folded in and filed away, not deleted
+    fs.writeFileSync(path.join(dir, 'daily-2026-11-01T02-00-00-000Z.json.gz'), zlib.gzipSync(JSON.stringify({ sms: [{ id: 'old-sms-1', created_at: '2026-11-01T01:00:00.000Z' }] })));
+    const { dailyBackup } = require('../src/routes/adminData'); dailyBackup.resetMemo();
+    await dailyBackup(); await dailyBackup();
+    assert.deepEqual(files(), ['tafiki-backup.json.gz'], 'one file only');
+    assert.ok(fs.existsSync(path.join(dir, 'merged', 'daily-2026-11-01T02-00-00-000Z.json.gz')));
+    let st = read(); assert.ok(st.tables.sms['old-sms-1'], 'old copy folded in'); assert.equal(st.updates.length, 1, 'once a day');
+    const pkgs1 = Object.keys(st.tables.packages).length; assert.equal(pkgs1, 1);
+    // "day 2": delete the package, update again; the same file still holds it, with no duplicate
+    const pkg = await db('packages').first();
+    await db('packages').del();
+    const saved = await sup.post('/api/admin/data/backups'); assert.equal(saved.status, 201); assert.equal(saved.body.backup, 'tafiki-backup.json.gz');
+    await sup.post('/api/admin/data/backups');
+    st = read(); assert.equal(Object.keys(st.tables.packages).length, 1, 'kept, not duplicated'); assert.ok(st.tables.packages[pkg.id].l < st.updatedAt, 'marked as no longer current');
+    assert.deepEqual(files(), ['tafiki-backup.json.gz']);
+    // a changed row is updated in place
+    await db('users').where({ email: 'ada@example.com' }).update({ city: 'Ibadan' });
+    await sup.post('/api/admin/data/backups'); st = read();
+    assert.equal(Object.values(st.tables.users).filter((x) => x.r.email === 'ada@example.com').length, 1); assert.equal(Object.values(st.tables.users).find((x) => x.r.email === 'ada@example.com').r.city, 'Ibadan');
+    // list: one Tafiki backup, newest nightly only, nothing deleted
+    fs.writeFileSync(path.join(dump, 'tafiki-2026-11-01.sql.gz'), Buffer.alloc(10)); const old = new Date(Date.now() - 86400000); fs.utimesSync(path.join(dump, 'tafiki-2026-11-01.sql.gz'), old, old);
     fs.writeFileSync(path.join(dump, 'tafiki-2026-11-02.sql.gz'), Buffer.alloc(10));
-    await dailyBackup(); assert.equal(fs.readdirSync(dump).length, 2);
-    fs.writeFileSync(path.join(dump, 'tafiki-2026-11-02.sql.gz'), Buffer.alloc(5000));
-    await dailyBackup(); assert.deepEqual(fs.readdirSync(dump), ['tafiki-2026-11-02.sql.gz']);
-    const l = await sup.get('/api/admin/data/backups'); assert.equal(l.body.backups.length, 3);
-    assert.ok(l.body.backups.some((x) => x.kind === 'Daily copy · updated every day'));
-    // restoring the hand-saved copy keeps it and writes the before-restore copy to its own file
-    const rs = await sup.post('/api/admin/data/backups/manual-backup.json.gz/restore').send({ password: 'Passw0rd!', phrase: 'RESTORE BACKUP' }); assert.equal(rs.status, 200);
-    assert.equal(rs.body.savedFirst, 'before-restore-backup.json.gz'); assert.ok(fs.existsSync(path.join(dir, 'manual-backup.json.gz')));
-  } finally { delete process.env.BACKUP_DIR; delete process.env.DUMP_DIR; fs.rmSync(dir, { recursive: true, force: true }); }
+    const l = await sup.get('/api/admin/data/backups'); assert.equal(l.status, 200); assert.equal(l.body.backups.length, 2);
+    const b = l.body.backups[0]; assert.equal(b.name, 'tafiki-backup.json.gz'); assert.ok(b.restorable); assert.equal(b.counts.packages, 1); assert.ok(b.counts.deletedKept >= 1); assert.equal(b.counts.members, 1);
+    assert.equal(l.body.backups[1].name, 'tafiki-2026-11-02.sql.gz'); assert.equal(fs.readdirSync(dump).length, 2, 'nightly copies are never deleted');
+    const dl = await sup.get('/api/admin/data/backups/tafiki-backup.json.gz').buffer(true).parse((res, cb) => { const c = []; res.on('data', (x) => c.push(x)); res.on('end', () => cb(null, Buffer.concat(c))); });
+    assert.equal(dl.status, 200); assert.ok(JSON.parse(zlib.gunzipSync(dl.body)).tables.users);
+    assert.equal((await sup.get('/api/admin/data/backups/..%2F..%2F.env')).status, 404);
+    // restore: checks, then the deleted package is back and current data is kept
+    assert.equal((await sup.post('/api/admin/data/backups/tafiki-backup.json.gz/restore').send({ password: 'wrong', phrase: 'RESTORE BACKUP' })).status, 400);
+    assert.equal((await sup.post('/api/admin/data/backups/tafiki-backup.json.gz/restore').send({ password: 'Passw0rd!', phrase: 'restore' })).status, 400);
+    assert.equal((await sup.post('/api/admin/data/backups/tafiki-2026-11-02.sql.gz/restore').send({ password: 'Passw0rd!', phrase: 'RESTORE BACKUP' })).status, 404);
+    const rs = await sup.post('/api/admin/data/backups/tafiki-backup.json.gz/restore').send({ password: 'Passw0rd!', phrase: 'RESTORE BACKUP' }); assert.equal(rs.status, 200, JSON.stringify(rs.body));
+    assert.equal(Number((await db('packages').count({ n: '*' }).first()).n), 1, 'deleted package is back');
+    assert.equal((await db('users').where({ email: 'ada@example.com' }).first()).city, 'Ibadan', 'current data kept');
+    assert.deepEqual(files(), ['tafiki-backup.json.gz'], 'still one file after a restore');
+  } finally { delete process.env.BACKUP_DIR; delete process.env.DUMP_DIR; fs.rmSync(dir, { recursive: true, force: true }); require('../src/routes/adminData').dailyBackup.resetMemo(); }
 });
 
 test('reset needs the password, then the token and the exact phrase; it backs up, clears data and keeps admins and settings', async () => {
@@ -83,7 +79,7 @@ test('reset needs the password, then the token and the exact phrase; it backs up
   assert.equal(Number((await db('users').count({ n: '*' }).first()).n), 0); assert.equal(Number((await db('packages').count({ n: '*' }).first()).n), 0);
   assert.equal(Number((await db('admins').count({ n: '*' }).first()).n), 2, 'admins kept');
   const f = path.join(__dirname, '..', 'data', 'backups', ok.backup); const back = JSON.parse(zlib.gunzipSync(fs.readFileSync(f)));
-  assert.ok(back.users.some((u) => u.email === 'ada@example.com'), 'backup holds the old data'); fs.unlinkSync(f);
+  assert.equal(ok.backup, 'tafiki-backup.json.gz'); assert.ok(Object.values(back.tables.users).some((x) => x.r.email === 'ada@example.com'), 'backup holds the old data'); fs.unlinkSync(f);
   assert.ok(await db('emails').where('subject', 'like', 'All Tafiki data was reset%').first(), 'Super Admins emailed');
   assert.equal((await sup.get('/api/admin/auth/me')).status, 200, 'still signed in');
 });
