@@ -15,7 +15,7 @@ const isBundle = (id) => /^BD-\d+$/.test(String(id));
 // a bundle (BD-…) is handled as one delivery: the mart's stock for every stake, one code and one truck
 const getD = async (id) => { if (isBundle(id)) return ops.bundleView(id); const d = await getDb()('deliveries').where({ id }).first(); if (!d) throw new HttpError(404, 'Delivery not found.'); return d; };
 const ids = (d) => (d.members ? d.members.map((m) => m.id) : [d.id]);
-const shape = async (d, full) => { const db = getDb(); const s = await db('users').where({ id: d.store_user_id }).first(); const out = { id: d.id, code: d.code, kind: d.kind, cycle: d.cycle, store: { id: s.id, name: s.shop }, stage: d.status, stageName: ops.STAGES[d.status], driver: d.driver, vehicle: d.vehicle, auto: !!d.auto, value: Number(d.value), codeAttempts: d.code_attempts, overrideReason: d.override_reason, deliveredAt: d.delivered_at, createdAt: d.created_at };
+const shape = async (d, full) => { const db = getDb(); const s = await db('users').where({ id: d.store_user_id }).first(); const out = { confirmedBy: d.confirmed_by || null, issue: d.issue_at ? { at: d.issue_at, by: d.issue_by, note: d.issue_note, lines: JSON.parse(d.issue_lines || '[]') } : null, id: d.id, code: d.code, kind: d.kind, cycle: d.cycle, store: { id: s.id, name: s.shop }, stage: d.status, stageName: ops.STAGES[d.status], driver: d.driver, vehicle: d.vehicle, auto: !!d.auto, value: Number(d.value), codeAttempts: d.code_attempts, overrideReason: d.override_reason, deliveredAt: d.delivered_at, createdAt: d.created_at };
   if (d.members) { out.id = d.code; out.bundle = { count: d.members.length, orders: await Promise.all(d.members.map(async (m) => { const h = m.holding_id ? await db('holdings').where({ id: m.holding_id }).first() : null; const u = h ? await db('users').where({ id: h.user_id }).first('name') : null;
     return { id: m.id, code: m.code, stage: m.status, stageName: ops.STAGES[m.status], value: Number(m.value), holdingRef: h ? h.ref : null, units: h ? h.units : null, member: u ? u.name : null }; })) }; }
   if (full) Object.assign(out, { lines: d.members ? await ops.bundleLines(d.members) : await db('delivery_lines').where({ delivery_id: d.id }), log: await db('delivery_log').where({ delivery_id: d.id }).orderBy('id'), driverLink: `${config.appUrl}/#driver?t=${d.driver_token}` }); return out; };
@@ -57,7 +57,7 @@ r.post('/deliveries/:id/complete', requirePerm('logistics'), async (req, res) =>
 r.post('/deliveries/:id/override', requirePerm('logistics'), async (req, res) => {
   const reason = z.string().trim().min(10, 'Give a clear reason of at least 10 characters.').max(160).parse(req.body && req.body.reason); const d = await getD(req.params.id);
   if (d.status === 3) throw bad('This delivery is already complete.');
-  const nd = await ops.markDelivered(d, { override: reason, by: 'admin:' + req.admin.id }, me(req)); res.json({ delivery: await shape(isBundle(req.params.id) ? await getD(req.params.id) : nd, true) });
+  const nd = await ops.markDelivered(d, { override: reason, by: 'admin:' + req.admin.id, who: 'Console: ' + req.admin.name + (d.issue_at ? ' (problem resolved)' : '') }, me(req)); res.json({ delivery: await shape(isBundle(req.params.id) ? await getD(req.params.id) : nd, true) });
 });
 r.post('/deliveries/:id/reissue-code', requirePerm('logistics'), async (req, res) => { const d = await getD(req.params.id); await ops.reissueCode(ids(d)[0], me(req)); res.json({ ok: true }); });
 

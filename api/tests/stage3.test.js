@@ -101,3 +101,18 @@ test('audit reminder emails at day 28', async () => {
   assert.equal(await ops.auditReminders(), 1); assert.match((await lastEmail('aud@tafiki.com')).subject, /audit due/i);
   assert.equal(await ops.auditReminders(), 0);
 });
+
+test('the mart confirms receipt itself, or reports a problem that holds the order for Tafiki', async () => {
+  const o = await logi.post('/api/admin/deliveries').send({ storeUserId: storeId, items: [{ sku: 'garri-5', qty: 40 }] }); assert.equal(o.status, 201); const id = o.body.delivery.id;
+  assert.equal((await store.post('/api/store/deliveries/' + id + '/receive').send({ ok: true })).status, 400, 'not before it leaves the centre');
+  await logi.post('/api/admin/deliveries/' + id + '/advance'); await logi.post('/api/admin/deliveries/' + id + '/advance');
+  const mail = await db('emails').where({ ref: o.body.delivery.code }).where('subject', 'like', '%In Transit').first(); assert.match(mail.body_text, /All received/);
+  assert.equal((await store.post('/api/store/deliveries/' + id + '/receive').send({ issue: {} })).status, 400, 'a problem needs details');
+  const rep = await store.post('/api/store/deliveries/' + id + '/receive').send({ issue: { note: '2 bags torn', lines: [{ sku: 'garri-5', received: 38 }] } });
+  assert.equal(rep.status, 200, JSON.stringify(rep.body)); assert.equal(rep.body.delivery.stage, 2); assert.equal(rep.body.delivery.issue.lines[0].received, 38);
+  assert.match((await lastEmail('logi@tafiki.com')).subject, /Problem reported on order/);
+  assert.equal((await logi.get('/api/admin/deliveries/' + id)).body.delivery.issue.note, '2 bags torn');
+  const ok = await store.post('/api/store/deliveries/' + id + '/receive').send({ ok: true }); assert.equal(ok.status, 200); assert.equal(ok.body.delivery.stage, 3);
+  assert.match(ok.body.delivery.confirmedBy, /FOODCORE Bodija \(mart/);
+  assert.equal((await store.post('/api/store/deliveries/' + id + '/receive').send({ ok: true })).status, 400, 'only once');
+});

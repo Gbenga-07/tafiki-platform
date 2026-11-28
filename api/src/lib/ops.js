@@ -40,12 +40,12 @@ async function notifyMart(d, linesOverride, count) {
   const lead = {
     0: `A stock order for **${store.shop}** has been raised and is being prepared at the Tafiki Distribution Centre. We will let you know as soon as it is collected for delivery.`,
     1: `Your order has been collected from the Tafiki Distribution Centre${driver ? ` by **${driver}**` : ''}. ${nextBy ? `The next update is expected by **${nextBy}**.` : 'We will update you at the next stage.'}`,
-    2: `Your order is now **in transit** to **${store.shop}**. Please make sure an authorised staff member is available to receive it. The driver will ask for your **delivery code** on arrival.`,
+    2: `Your order is now **in transit** to **${store.shop}**. When it arrives, count the bags, then tap **All received** in your mart portal. If anything is short or damaged, tap **Report a problem** instead.`,
     3: `Your order has been delivered to **${store.shop}** and confirmed with your delivery code on **${K.when(at(3))}**. The stock has been added to your consignment account.` }[si];
   const next = {
     0: ['The order is packed and checked against the order list.', `A driver collects it, usually within ${L.stageHours || 6} hours.`, 'You receive an email at every stage until delivery.'],
     1: [`The driver heads to ${store.shop}.`, 'You will receive an email with your **delivery code** when the order is in transit. It is also in your mart portal.', 'Make sure someone authorised is at the mart to receive it.'],
-    2: ['**Count the bags** against the list above before confirming.', 'Give the driver your delivery code **only once the count is correct**.', 'Report any shortage or damage before confirming. Your code is also in your mart portal.'],
+    2: ['**Count the bags** against the list above.', 'All correct? Tap **All received** in your mart portal. The driver can leave once you have confirmed.', 'Short or damaged? Tap **Report a problem** instead of confirming. Tafiki sorts it out with you.', 'No access to the portal? Give the driver the delivery code below, **only once the count is correct**.'],
     3: ['Record your sales as usual through your Tafiki mart portal.', `Your stock is audited on day ${L.auditDay || 28} of the cycle and the remittance is settled.`, 'The next restock is released after reconciliation.'] }[si];
   let receipt;
   if (si === 3) { const acc = await storeAccount(store.id);
@@ -54,7 +54,7 @@ async function notifyMart(d, linesOverride, count) {
     lead, blocks: [{ type: 'kv', title: 'Order details', rows: [['Order number', '#' + d.code], ['Order type', type], ['Delivering to', store.shop], ['Supplied by', 'FOODCORE Cooperative Limited · Tafiki Distribution Centre'], ['Driver', si >= 1 ? driver : ''], ['Status', st]] }, items(true), steps,
       si === 2 ? { type: 'code', title: 'Your delivery code', code: box.open(d.code_enc), sub: 'Give it to the driver only after counting the bags' } : null,
       si === 2 ? { type: 'note', tone: 'warn', title: 'Keep your delivery code private', text: 'The same code is in your mart portal. Never share it before the bags are counted. Tafiki staff will never ask for it.' } : null],
-    receipt, next, help: `Questions about this order? Reply to this email quoting **#${d.code}**, or contact Tafiki Operations at **support@tafiki.com**.`, team: 'Tafiki Operations' });
+    receipt, next, cta: si === 2 ? { label: 'Confirm receipt in my portal', url: K.link('shop-orders') } : undefined, help: `Questions about this order? Reply to this email quoting **#${d.code}**, or contact Tafiki Operations at **support@tafiki.com**.`, team: 'Tafiki Operations' });
 }
 // the unit holder whose stake this stock comes from: always their own order number and steps
 async function notifyHolders(d) {
@@ -134,10 +134,10 @@ async function ensureCycle(storeUserId, startAt) {
 async function markDelivered(d, how, actor, inner) {
   if (d.bundle_code && !inner) return deliverBundle(d.bundle_code, how, actor);
   const db = getDb(); const at = now();
-  const won = await db('deliveries').where({ id: d.id }).where('status', '<', 3).update({ status: 3, delivered_at: at, override_reason: how.override || null });
+  const won = await db('deliveries').where({ id: d.id }).where('status', '<', 3).update({ status: 3, delivered_at: at, override_reason: how.override || null, confirmed_by: how.who || null });
   if (!won) throw bad('This delivery is already complete.');
   const nd = await db('deliveries').where({ id: d.id }).first();
-  await logStage(nd, 3, how.override ? 'Override: ' + how.override : 'Confirmed with delivery code', how.by || 'driver');
+  await logStage(nd, 3, how.note || (how.override ? 'Override: ' + how.override : 'Confirmed with delivery code'), how.by || 'driver');
   // first stock of a cycle (stake delivery, or restock after reconciliation) starts the store's cycle
   const cur = await db('store_cycles').where({ store_user_id: d.store_user_id }).orderBy('k', 'desc').first();
   if (!cur || (cur.restock_released_at && d.kind === 'restock')) await ensureCycle(d.store_user_id, at);
@@ -161,7 +161,7 @@ async function completeWithCode(d, code, by) {
       cta: { label: 'Open the Tafiki Console', url: K.consoleLink() }, help: 'This is an automatic alert for Super Admins, Operations Managers and Logistics Officers.' }); }
     throw bad('That delivery code is not correct.');
   }
-  return markDelivered(d, { by }, null);
+  return markDelivered(d, { by, who: String(by || '').startsWith('admin') ? 'Delivery code, entered in the console' : 'Delivery code, entered by the driver' }, null);
 }
 async function reissueCode(id, actor) {
   const db = getDb(); const d = await db('deliveries').where({ id }).first(); if (!d) throw new HttpError(404, 'Delivery not found.');
@@ -362,13 +362,13 @@ async function deliverBundle(code, how, actor) {
   const db = getDb(); const at = now();
   const open = (await bundleMembers(code)).filter((m) => m.status < 3); if (!open.length) throw bad('This delivery is already complete.');
   // the whole bundle is claimed in one step, so the driver and the console cannot both complete it
-  if (!(await db('deliveries').whereIn('id', open.map((m) => m.id)).where('status', '<', 3).update({ status: 3, delivered_at: at, override_reason: how.override || null }))) throw bad('This delivery is already complete.');
+  if (!(await db('deliveries').whereIn('id', open.map((m) => m.id)).where('status', '<', 3).update({ status: 3, delivered_at: at, override_reason: how.override || null, confirmed_by: how.who || null }))) throw bad('This delivery is already complete.');
   const done = await db('deliveries').whereIn('id', open.map((m) => m.id)).where({ status: 3 });
   const cur = await db('store_cycles').where({ store_user_id: open[0].store_user_id }).orderBy('k', 'desc').first();
   if (!cur || (cur.restock_released_at && open[0].kind === 'restock')) await ensureCycle(open[0].store_user_id, at);
   for (const nd of done) {
-    await logStage(nd, 3, how.override ? 'Override: ' + how.override : 'Confirmed with delivery code', how.by || 'driver');
-    await activity.log(actor || null, 'delivery.delivered', { type: 'delivery', id: nd.id }, { code: nd.code, bundle: code, override: how.override || null });
+    await logStage(nd, 3, how.note || (how.override ? 'Override: ' + how.override : 'Confirmed with delivery code'), how.by || 'driver');
+    await activity.log(actor || null, 'delivery.delivered', { type: 'delivery', id: nd.id }, { code: nd.code, bundle: code, override: how.override || null, by: how.who || null });
     await notifyHolders(nd);
   }
   await notifyBundle(code);
@@ -386,4 +386,34 @@ async function reissueBundle(code, actor) {
   await activity.log(actor, 'delivery.code_reissued', { type: 'delivery', id: ms[0].id }, { bundle: code });
   return true;
 }
-module.exports = { newBundleCode, bundleMembers, bundleLines, bundleView, advanceBundle, deliverBundle, reissueBundle, notifyBundle, STAGES, createDelivery, deliveriesForPackage, linesForUnits, advance, markDelivered, completeWithCode, reissueCode, storeAccount, recordAudit, reportRemittance, decideRemittance, reconcile, releaseRestocks, autoAdvance, auditReminders, ensureCycle };
+
+// ---------- the mart confirms receipt, or reports a problem ----------
+async function martReceive(d, store) {
+  if (d.status === 3) throw bad('This delivery is already complete.');
+  if (d.status < 1) throw bad('This order has not left the Tafiki Distribution Centre yet.');
+  const who = `${store.shop} (mart${store.name ? ': ' + store.name : ''})`;
+  return markDelivered(d, { by: 'mart:' + store.id, who, note: 'Confirmed by the mart: all bags received' }, { type: 'user', id: store.id });
+}
+async function martReportIssue(d, store, { lines, note }) {
+  const db = getDb();
+  if (d.status === 3) throw bad('This delivery is already complete.');
+  if (d.status < 1) throw bad('This order has not left the Tafiki Distribution Centre yet.');
+  const ids = d.members ? d.members.map((m) => m.id) : [d.id];
+  const sent = d.members ? await bundleLines(d.members) : await db('delivery_lines').where({ delivery_id: d.id });
+  const got = new Map((lines || []).map((l) => [String(l.sku), Math.max(0, Math.floor(Number(l.received) || 0))]));
+  const rows = sent.map((l) => ({ sku: l.sku, name: l.name, size: l.size, sent: Number(l.qty), received: got.has(l.sku) ? Math.min(got.get(l.sku), Number(l.qty) * 2) : Number(l.qty) }));
+  const text = String(note || '').trim().slice(0, 480);
+  if (!text && rows.every((r) => r.received === r.sent)) throw bad('Tell us what is wrong: change the bags received, or add a short note.');
+  await db('deliveries').whereIn('id', ids).update({ issue_at: now(), issue_by: `${store.shop}${store.name ? ' (' + store.name + ')' : ''}`, issue_note: text || null, issue_lines: JSON.stringify(rows) });
+  for (const id of ids) await logStage({ id }, d.status, 'Problem reported by the mart' + (text ? ': ' + text : ''), 'mart:' + store.id);
+  await activity.log({ type: 'user', id: store.id }, 'delivery.issue_reported', { type: 'delivery', id: ids[0] }, { code: d.code, note: text, short: rows.filter((r) => r.received < r.sent).map((r) => `${r.name}: ${r.sent - r.received} short`) });
+  const admins = await db('admins').where({ status: 'active' }).whereIn('role', ['Super Admin', 'Operations Manager', 'Logistics Officer']);
+  for (const a of admins) await sendEmail({ to: a.email, name: a.name.split(' ')[0], category: 'operations', ref: d.code, subject: `Problem reported on order #${d.code}`, title: 'A mart reported a delivery problem',
+    lead: `**${store.shop}** reported a problem with order **#${d.code}** before confirming receipt. The order stays open until it is resolved.`,
+    blocks: [{ type: 'items', title: 'Bags sent and received', head: ['Product', 'Sent', 'Received'], right: [1, 2], rows: rows.map((r) => [[r.name, r.size || ''], r.sent.toLocaleString(), r.received.toLocaleString()]) },
+      { type: 'kv', title: 'Report', rows: [['Order', '#' + d.code], ['Mart', store.shop], ['Reported by', store.name || 'Mart manager'], ['Driver', d.driver ? `${d.driver}${d.vehicle ? ' · ' + d.vehicle : ''}` : ''], ['Note', text], ['Reported', K.when()]].filter((r) => r[1]) }],
+    next: ['Call the mart manager and the driver to agree what happened.', 'If the bags are found or brought back, the mart can still tap **All received**.', 'Otherwise complete the order in the console with **Resolve and complete**, giving a clear reason.'],
+    cta: { label: 'Open the Tafiki Console', url: K.consoleLink() }, help: 'This is an automatic alert for Super Admins, Operations Managers and Logistics Officers.' });
+  return db('deliveries').where({ id: ids[0] }).first();
+}
+module.exports = { martReceive, martReportIssue, newBundleCode, bundleMembers, bundleLines, bundleView, advanceBundle, deliverBundle, reissueBundle, notifyBundle, STAGES, createDelivery, deliveriesForPackage, linesForUnits, advance, markDelivered, completeWithCode, reissueCode, storeAccount, recordAudit, reportRemittance, decideRemittance, reconcile, releaseRestocks, autoAdvance, auditReminders, ensureCycle };
