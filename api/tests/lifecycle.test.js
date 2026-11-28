@@ -118,19 +118,23 @@ test('5. people still in ID review keep their units waiting; approving them issu
 test('6. package opens once even when clicked 3 times; the delivery code is emailed to the mart; driver and console race to complete', async () => {
   const op = await all([0, 1, 2].map(() => sup.post('/api/admin/packages/' + pkgId + '/open').send({})));
   assert.equal(op.filter((r) => r.status === 200).length, 1, op.map((r) => r.status).join(','));
-  const ds = (await logi.get('/api/admin/deliveries?limit=1000')).body.deliveries; assert.equal(ds.length, N); // one stake delivery per unit holding
-  ds.forEach((x) => assert.equal(x.value, 2000000));
-  // two job runners at once move every delivery one step at a time
-  for (let i = 0; i < 2; i++) { await db('delivery_log').update({ at: new Date(Date.now() - 7 * 3600e3) }); const n = await all([ops.autoAdvance(), ops.autoAdvance()]); assert.equal(n[0] + n[1], N); }
-  const codeFor = async (d) => { const e = await db('emails').where({ ref: d.code }).where('subject', 'like', '%In Transit').where('body_text', 'like', '%YOUR DELIVERY CODE%').first(); assert.ok(e, 'delivery code email for ' + d.code); return e.body_text.match(/YOUR DELIVERY CODE: (\d{6})/)[1]; };
-  const d = ds[0]; const code = await codeFor(d);
+  // the mart's stock for every stake goes out as one bundle; each stake keeps its own order
+  const ds = (await logi.get('/api/admin/deliveries?limit=1000')).body.deliveries; assert.equal(ds.length, 1);
+  const d = ds[0]; assert.match(d.code, /^BD-\d+$/); assert.equal(d.bundle.count, N); assert.equal(d.value, N * 2000000);
+  d.bundle.orders.forEach((o) => { assert.equal(o.value, 2000000); assert.match(o.code, /^SO-\d+$/); });
+  // two job runners at once move the bundle one step at a time
+  for (let i = 0; i < 2; i++) { await db('delivery_log').update({ at: new Date(Date.now() - 7 * 3600e3) }); const n = await all([ops.autoAdvance(), ops.autoAdvance()]); assert.equal(n[0] + n[1], 1); }
+  const martMails = await db('emails').where({ to_email: 'mart@example.com' }).where('subject', 'like', '%In Transit');
+  const e = await db('emails').where({ ref: d.code }).where('subject', 'like', '%In Transit').where('body_text', 'like', '%YOUR DELIVERY CODE%');
+  assert.equal(e.length, 1, 'one code email for the whole bundle'); const code = e[0].body_text.match(/YOUR DELIVERY CODE: (\d{6})/)[1];
+  const holderMails = await db('emails').where('ref', 'like', 'SO-%').where('subject', 'like', '%In Transit'); assert.equal(holderMails.length, N, 'each member tracks their own order');
+  assert.equal((await store.get('/api/store/deliveries')).body.deliveries.filter((x) => x.kind === 'stake').length, 1, 'the mart sees one delivery');
   assert.equal((await store.get('/api/store/deliveries/' + d.id)).body.delivery.deliveryCode, code);
   const full = (await logi.get('/api/admin/deliveries/' + d.id)).body.delivery; const token = full.driverLink.split('t=')[1];
   const race = await all([agent(app).post('/api/driver/' + token + '/complete').send({ code }), logi.post('/api/admin/deliveries/' + d.id + '/complete').send({ code }), agent(app).post('/api/driver/' + token + '/complete').send({ code })]);
   assert.equal(race.filter((r) => r.status === 200).length, 1, race.map((r) => r.status).join(','));
-  // the rest are delivered at the same time
-  const rest = await all(ds.slice(1).map(async (x) => logi.post('/api/admin/deliveries/' + x.id + '/complete').send({ code: await codeFor(x) })));
-  rest.forEach((r) => assert.equal(r.status, 200, JSON.stringify(r.body)));
+  assert.equal(Number((await db('deliveries').where({ bundle_code: d.code, status: 3 }).count({ n: '*' }).first()).n), N, 'every order in the bundle is delivered');
+  void martMails;
   const acc = (await store.get('/api/store/account')).body.account; assert.equal(acc.stockReceived, N * 2000000); assert.equal(acc.cycle.k, 1);
   const active = await db('holdings').where({ package_id: pkgId, status: 'active' }).count({ n: '*' }).first(); assert.equal(Number(active.n), N);
 });

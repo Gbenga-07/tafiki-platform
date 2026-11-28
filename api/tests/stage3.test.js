@@ -23,14 +23,14 @@ after(async () => { await db.destroy(); });
 
 test('opening a package creates the stake delivery with stock for each unit', async () => {
   const list = (await logi.get('/api/admin/deliveries')).body.deliveries; assert.equal(list.length, 1); delivery = list[0];
-  assert.match(delivery.code, /^SO-\d+$/); assert.equal(delivery.value, 4000000); assert.equal(delivery.stageName, 'Order Received');
+  assert.match(delivery.code, /^BD-\d+$/); assert.equal(delivery.bundle.count, 1); assert.match(delivery.bundle.orders[0].code, /^SO-\d+$/); assert.equal(delivery.value, 4000000); assert.equal(delivery.stageName, 'Order Received');
   const full = (await logi.get('/api/admin/deliveries/' + delivery.id)).body.delivery; assert.equal(full.lines.find((l) => l.sku === 'garri-5').qty, 1000);
 });
 
 test('stages move automatically; In Transit emails the delivery code to the mart', async () => {
-  await db('delivery_log').where({ delivery_id: delivery.id }).update({ at: new Date(Date.now() - 7 * 3600e3) });
+  await db('delivery_log').whereIn('delivery_id', db('deliveries').where({ bundle_code: delivery.id }).select('id')).update({ at: new Date(Date.now() - 7 * 3600e3) });
   assert.equal(await ops.autoAdvance(), 1);
-  await db('delivery_log').where({ delivery_id: delivery.id }).update({ at: new Date(Date.now() - 7 * 3600e3) });
+  await db('delivery_log').whereIn('delivery_id', db('deliveries').where({ bundle_code: delivery.id }).select('id')).update({ at: new Date(Date.now() - 7 * 3600e3) });
   assert.equal(await ops.autoAdvance(), 1);
   assert.equal(await ops.autoAdvance(), 0); // last step needs the code
   const e = await db('emails').where({ to_email: 'kemi@example.com' }).where('subject', 'like', '%In Transit').first(); assert.ok(e, 'in-transit email to the mart');
@@ -66,7 +66,7 @@ test('day-28 audit, remittance, reconciliation, then restock', async () => {
   acc = (await store.get('/api/store/account')).body.account; assert.equal(acc.remittanceDue, 0);
   await db('store_cycles').where({ store_user_id: storeId, k: 1 }).update({ restock_at: new Date(Date.now() - 1000) });
   assert.equal((await aud.post('/api/admin/stores/' + storeId + '/reconcile')).status, 200);
-  const ds = (await logi.get('/api/admin/deliveries?kind=restock')).body.deliveries; assert.equal(ds.length, 1); assert.match(ds[0].code, /-R1$/);
+  const ds = (await logi.get('/api/admin/deliveries?kind=restock')).body.deliveries; assert.equal(ds.length, 1); assert.match(ds[0].code, /^BD-\d+$/); assert.match(ds[0].bundle.orders[0].code, /-R1$/);
   assert.equal(ds[0].value, 1600000); // replaces exactly what was sold
   // restock delivered with an override starts cycle 2
   assert.equal((await logi.post('/api/admin/deliveries/' + ds[0].id + '/override').send({ reason: 'short' })).status, 400);

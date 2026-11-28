@@ -11,14 +11,21 @@ const activity = require('../lib/activity');
 const r = express.Router();
 r.use(requireAdmin);
 const me = (req) => ({ type: 'admin', id: req.admin.id });
-const getD = async (id) => { const d = await getDb()('deliveries').where({ id }).first(); if (!d) throw new HttpError(404, 'Delivery not found.'); return d; };
+const isBundle = (id) => /^BD-\d+$/.test(String(id));
+// a bundle (BD-…) is handled as one delivery: the mart's stock for every stake, one code and one truck
+const getD = async (id) => { if (isBundle(id)) return ops.bundleView(id); const d = await getDb()('deliveries').where({ id }).first(); if (!d) throw new HttpError(404, 'Delivery not found.'); return d; };
+const ids = (d) => (d.members ? d.members.map((m) => m.id) : [d.id]);
 const shape = async (d, full) => { const db = getDb(); const s = await db('users').where({ id: d.store_user_id }).first(); const out = { id: d.id, code: d.code, kind: d.kind, cycle: d.cycle, store: { id: s.id, name: s.shop }, stage: d.status, stageName: ops.STAGES[d.status], driver: d.driver, vehicle: d.vehicle, auto: !!d.auto, value: Number(d.value), codeAttempts: d.code_attempts, overrideReason: d.override_reason, deliveredAt: d.delivered_at, createdAt: d.created_at };
-  if (full) Object.assign(out, { lines: await db('delivery_lines').where({ delivery_id: d.id }), log: await db('delivery_log').where({ delivery_id: d.id }).orderBy('id'), driverLink: `${config.appUrl}/#driver?t=${d.driver_token}` }); return out; };
+  if (d.members) { out.id = d.code; out.bundle = { count: d.members.length, orders: await Promise.all(d.members.map(async (m) => { const h = m.holding_id ? await db('holdings').where({ id: m.holding_id }).first() : null; const u = h ? await db('users').where({ id: h.user_id }).first('name') : null;
+    return { id: m.id, code: m.code, stage: m.status, stageName: ops.STAGES[m.status], value: Number(m.value), holdingRef: h ? h.ref : null, units: h ? h.units : null, member: u ? u.name : null }; })) }; }
+  if (full) Object.assign(out, { lines: d.members ? await ops.bundleLines(d.members) : await db('delivery_lines').where({ delivery_id: d.id }), log: await db('delivery_log').where({ delivery_id: d.id }).orderBy('id'), driverLink: `${config.appUrl}/#driver?t=${d.driver_token}` }); return out; };
 
 r.get('/deliveries', async (req, res) => {
   let q = getDb()('deliveries').orderBy('created_at', 'desc').limit(Math.min(1000, +(req.query.limit || 300)));
   if (req.query.open === '1') q = q.where('status', '<', 3); if (req.query.storeId) q = q.where({ store_user_id: req.query.storeId }); if (req.query.kind) q = q.where({ kind: req.query.kind });
-  res.json({ deliveries: await Promise.all((await q).map((d) => shape(d, req.query.full === '1'))) });
+  const rows = []; const seen = new Set();
+  for (const d of await q) { if (d.bundle_code) { if (seen.has(d.bundle_code)) continue; seen.add(d.bundle_code); rows.push(await ops.bundleView(d.bundle_code)); } else rows.push(d); }
+  res.json({ deliveries: await Promise.all(rows.map((d) => shape(d, req.query.full === '1'))) });
 });
 r.get('/deliveries/:id', async (req, res) => res.json({ delivery: await shape(await getD(req.params.id), true) }));
 r.post('/deliveries', requirePerm('logistics'), async (req, res) => {
@@ -31,28 +38,28 @@ r.post('/deliveries', requirePerm('logistics'), async (req, res) => {
 });
 r.post('/deliveries/:id/advance', requirePerm('logistics'), async (req, res) => {
   const from = req.body && Number.isInteger(req.body.fromStage) ? req.body.fromStage : undefined; // stops a double click moving two stages
-  const nd = await ops.advance(req.params.id, me(req), 'Moved by admin', from);
+  const nd = isBundle(req.params.id) ? await ops.advanceBundle(req.params.id, me(req), 'Moved by admin', from) : await ops.advance(req.params.id, me(req), 'Moved by admin', from);
   if (!nd) throw new HttpError(409, 'This delivery has already moved on. Refresh to see its stage.');
-  res.json({ delivery: await shape(nd, true) });
+  res.json({ delivery: await shape(isBundle(req.params.id) ? await getD(req.params.id) : nd, true) });
 });
 r.patch('/deliveries/:id', requirePerm('logistics'), async (req, res) => {
-  const d = z.object({ driver: z.string().trim().max(80).optional(), vehicle: z.string().trim().max(40).optional(), auto: z.boolean().optional() }).parse(req.body); await getD(req.params.id);
-  await getDb()('deliveries').where({ id: req.params.id }).update(d); await activity.log(me(req), 'delivery.updated', { type: 'delivery', id: req.params.id }, d);
+  const d = z.object({ driver: z.string().trim().max(80).optional(), vehicle: z.string().trim().max(40).optional(), auto: z.boolean().optional() }).parse(req.body); const cur = await getD(req.params.id);
+  await getDb()('deliveries').whereIn('id', ids(cur)).update(d); await activity.log(me(req), 'delivery.updated', { type: 'delivery', id: ids(cur)[0] }, { ...d, bundle: cur.bundle_code || undefined });
   res.json({ delivery: await shape(await getD(req.params.id), true) });
 });
 r.post('/deliveries/:id/delay', requirePerm('logistics'), async (req, res) => {
   const minutes = z.number().int().min(15).max(7 * 24 * 60).parse(req.body && req.body.minutes); const d = await getD(req.params.id);
-  await getDb()('deliveries').where({ id: d.id }).update({ delay_minutes: d.delay_minutes + minutes });
+  await getDb()('deliveries').whereIn('id', ids(d)).update({ delay_minutes: d.delay_minutes + minutes });
   await activity.log(me(req), 'delivery.delayed', { type: 'delivery', id: d.id }, { minutes, reason: req.body.reason || null });
   res.json({ ok: true });
 });
-r.post('/deliveries/:id/complete', requirePerm('logistics'), async (req, res) => { const nd = await ops.completeWithCode(await getD(req.params.id), req.body && req.body.code, 'admin:' + req.admin.id); res.json({ delivery: await shape(nd, true) }); });
+r.post('/deliveries/:id/complete', requirePerm('logistics'), async (req, res) => { const nd = await ops.completeWithCode(await getD(req.params.id), req.body && req.body.code, 'admin:' + req.admin.id); res.json({ delivery: await shape(isBundle(req.params.id) ? await getD(req.params.id) : nd, true) }); });
 r.post('/deliveries/:id/override', requirePerm('logistics'), async (req, res) => {
   const reason = z.string().trim().min(10, 'Give a clear reason of at least 10 characters.').max(160).parse(req.body && req.body.reason); const d = await getD(req.params.id);
   if (d.status === 3) throw bad('This delivery is already complete.');
-  const nd = await ops.markDelivered(d, { override: reason, by: 'admin:' + req.admin.id }, me(req)); res.json({ delivery: await shape(nd, true) });
+  const nd = await ops.markDelivered(d, { override: reason, by: 'admin:' + req.admin.id }, me(req)); res.json({ delivery: await shape(isBundle(req.params.id) ? await getD(req.params.id) : nd, true) });
 });
-r.post('/deliveries/:id/reissue-code', requirePerm('logistics'), async (req, res) => { await ops.reissueCode(req.params.id, me(req)); res.json({ ok: true }); });
+r.post('/deliveries/:id/reissue-code', requirePerm('logistics'), async (req, res) => { const d = await getD(req.params.id); await ops.reissueCode(ids(d)[0], me(req)); res.json({ ok: true }); });
 
 r.get('/stores', async (req, res) => { const ss = await getDb()('users').where({ role: 'retailer' }).orderBy('shop'); res.json({ stores: await Promise.all(ss.map(async (s) => ({ id: s.id, name: s.shop, manager: s.name, area: s.area, kycStatus: s.kyc_status, account: await ops.storeAccount(s.id) }))) }); });
 r.get('/stores/:id', async (req, res) => {

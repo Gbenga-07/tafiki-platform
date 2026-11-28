@@ -20,12 +20,14 @@ async function holdersOf(d) {
   const h = await db('holdings').where({ id: d.holding_id }).first();
   return h ? [await db('users').where({ id: h.user_id }).first()] : [];
 }
-async function notifyStage(d) {
+async function notifyStage(d) { if (!d.bundle_code) await notifyMart(d, null); await notifyHolders(d); }
+// the mart: one email per stage; for a bundle, one email for the whole bundle (lines added up, one delivery code)
+async function notifyMart(d, linesOverride, count) {
   const db = getDb(); const store = await db('users').where({ id: d.store_user_id }).first();
   const st = STAGES[d.status], si = d.status, L = DEFAULTS.logistics;
   const log = await db('delivery_log').where({ delivery_id: d.id }).orderBy('at');
   const at = (i) => { const e = log.filter((x) => x.stage === i).pop(); return e ? e.at : i === si ? new Date() : null; };
-  const ls = await db('delivery_lines').where({ delivery_id: d.id });
+  const ls = linesOverride || await db('delivery_lines').where({ delivery_id: d.id });
   const bags = ls.reduce((a, l) => a + Number(l.qty), 0);
   const type = d.kind === 'restock' ? `Restock · after cycle ${d.cycle}` : d.kind === 'stake' ? 'Opening stock' : 'Mart order';
   const driver = d.driver ? `${d.driver}${d.vehicle ? ' · ' + d.vehicle : ''}` : '';
@@ -53,7 +55,21 @@ async function notifyStage(d) {
       si === 2 ? { type: 'code', title: 'Your delivery code', code: box.open(d.code_enc), sub: 'Give it to the driver only after counting the bags' } : null,
       si === 2 ? { type: 'note', tone: 'warn', title: 'Keep your delivery code private', text: 'The same code is in your mart portal. Never share it before the bags are counted. Tafiki staff will never ask for it.' } : null],
     receipt, next, help: `Questions about this order? Reply to this email quoting **#${d.code}**, or contact Tafiki Operations at **support@tafiki.com**.`, team: 'Tafiki Operations' });
-  // the unit holder whose stake this stock comes from
+}
+// the unit holder whose stake this stock comes from: always their own order number and steps
+async function notifyHolders(d) {
+  const db = getDb(); const store = await db('users').where({ id: d.store_user_id }).first();
+  const st = STAGES[d.status], si = d.status, L = DEFAULTS.logistics;
+  const log = await db('delivery_log').where({ delivery_id: d.id }).orderBy('at');
+  const at = (i) => { const e = log.filter((x) => x.stage === i).pop(); return e ? e.at : i === si ? new Date() : null; };
+  const ls = await db('delivery_lines').where({ delivery_id: d.id });
+  const bags = ls.reduce((a, l) => a + Number(l.qty), 0);
+  const type = d.kind === 'restock' ? `Restock · after cycle ${d.cycle}` : d.kind === 'stake' ? 'Opening stock' : 'Mart order';
+  const driver = d.driver ? `${d.driver}${d.vehicle ? ' · ' + d.vehicle : ''}` : '';
+  const steps = { type: 'steps', title: 'Delivery progress', steps: STAGES.map((label, i) => ({ label, state: i < si ? 'done' : i === si ? 'now' : 'todo', sub: i <= si && at(i) ? K.when(at(i)).replace(/ \d{4},/, ',').replace(' WAT', '') : 'Pending' })) };
+  const items = (withValue) => ({ type: 'items', title: 'Items', head: withValue ? ['Product', 'Bags', 'Value'] : ['Product', 'Bags'], right: [1, 2],
+    rows: ls.map((l) => [[`${l.name}`, [l.size, l.brand].filter(Boolean).join(' · ')], Number(l.qty).toLocaleString(), ...(withValue ? [K.N(l.qty * l.unit_cost)] : [])]),
+    total: ['Total', bags.toLocaleString(), ...(withValue ? [K.N(d.value)] : [])] });
   for (const u of await holdersOf(d)) {
     const h = await db('holdings').where({ id: d.holding_id }).first();
     const hl = { 0: `We have received the stock order linked to your stake and it is being prepared at the Tafiki Distribution Centre for delivery to **${store.shop}**.`, 1: `The stock for your stake has been collected from the Tafiki Distribution Centre and is heading to **${store.shop}**.`, 2: `Your stock is now **in transit** to **${store.shop}**. The mart will confirm receipt with its delivery code when it arrives.`, 3: `Your stock has been delivered to **${store.shop}** and confirmed by the mart with its delivery code on **${K.when(at(3))}**. It is now on the shelf and trading.` }[si];
@@ -65,11 +81,11 @@ async function notifyStage(d) {
 }
 async function logStage(d, stage, note, actor) { await getDb()('delivery_log').insert({ delivery_id: d.id, stage, note: note || null, actor: actor || 'system', at: new Date() }); }
 
-async function createDelivery({ kind, storeUserId, holdingId, packageId, cycle, lines, code }, actor) {
-  const db = getDb(); const id = uuid(); const secret = randomCode(6);
+async function createDelivery({ kind, storeUserId, holdingId, packageId, cycle, lines, code, bundleCode, secret: shared }, actor) {
+  const db = getDb(); const id = uuid(); const secret = shared || randomCode(6);
   const value = lines.reduce((a, l) => a + l.qty * l.unit_cost, 0);
   const dcode = code || 'TR-' + (await counters.next('store_order', 2001));
-  await db('deliveries').insert({ id, code: dcode, kind, cycle: cycle || null, holding_id: holdingId || null, package_id: packageId || null, store_user_id: storeUserId, status: 0, code_hash: sha256(id + '|' + secret), code_enc: box.seal(secret), driver_token: randomToken(24), value });
+  await db('deliveries').insert({ id, code: dcode, kind, cycle: cycle || null, holding_id: holdingId || null, package_id: packageId || null, store_user_id: storeUserId, bundle_code: bundleCode || null, status: 0, code_hash: sha256(id + '|' + secret), code_enc: box.seal(secret), driver_token: randomToken(24), value });
   for (const l of lines) await db('delivery_lines').insert({ delivery_id: id, ...l });
   const d = await db('deliveries').where({ id }).first();
   await logStage(d, 0, null, actor ? actor.type + ':' + actor.id : 'system');
@@ -83,16 +99,22 @@ async function linesForUnits(units) { const p = await getUnitPackage(); return p
 async function deliveriesForPackage(packageId, actor) {
   const db = getDb(); const p = await db('packages').where({ id: packageId }).first();
   const hs = await db('holdings').where({ package_id: packageId }).whereIn('status', ['active', 'redeem']);
-  const out = [];
-  for (const h of hs) { if (await db('deliveries').where({ holding_id: h.id, kind: 'stake' }).first()) continue; out.push(await createDelivery({ kind: 'stake', storeUserId: p.store_user_id, holdingId: h.id, packageId, lines: await linesForUnits(h.units), code: 'SO-' + h.ref.replace('FC-', '') }, actor)); }
+  const out = []; const todo = [];
+  for (const h of hs) if (!(await db('deliveries').where({ holding_id: h.id, kind: 'stake' }).first())) todo.push(h);
+  if (!todo.length) return out;
+  // one bundle for the whole mart: one order number, one delivery code, one truck; each stake keeps its own order
+  const bundleCode = await newBundleCode(); const secret = randomCode(6);
+  for (const h of todo) out.push(await createDelivery({ kind: 'stake', storeUserId: p.store_user_id, holdingId: h.id, packageId, lines: await linesForUnits(h.units), code: 'SO-' + h.ref.replace('FC-', ''), bundleCode, secret }, actor));
+  await notifyBundle(bundleCode);
   return out;
 }
 
 // expectStatus: the job runner passes the stage it saw, so a delivery that another runner (or an admin) has just
 // moved is skipped instead of being moved a second time.
-async function advance(id, actor, note, expectStatus) {
+async function advance(id, actor, note, expectStatus, inner) {
   const db = getDb(); const d = await db('deliveries').where({ id }).first();
   if (!d) throw new HttpError(404, 'Delivery not found.');
+  if (d.bundle_code && !inner) return advanceBundle(d.bundle_code, actor, note, expectStatus);
   if (expectStatus !== undefined && d.status !== expectStatus) return null;
   if (d.status >= 2) throw bad(d.status === 3 ? 'This delivery is complete.' : 'The last step needs the mart’s delivery code.');
   if (!(await db('deliveries').where({ id, status: d.status }).update({ status: d.status + 1, delay_minutes: 0 }))) { if (expectStatus !== undefined) return null; throw bad('This delivery has just moved on.'); }
@@ -109,7 +131,8 @@ async function ensureCycle(storeUserId, startAt) {
   await db('store_cycles').insert({ store_user_id: storeUserId, k, start_at: s, audit_at: addMinutes(s, L.auditDay * DAY), restock_at: addMinutes(s, L.cycleDays * DAY) });
   return db('store_cycles').where({ store_user_id: storeUserId, k }).first();
 }
-async function markDelivered(d, how, actor) {
+async function markDelivered(d, how, actor, inner) {
+  if (d.bundle_code && !inner) return deliverBundle(d.bundle_code, how, actor);
   const db = getDb(); const at = now();
   const won = await db('deliveries').where({ id: d.id }).where('status', '<', 3).update({ status: 3, delivered_at: at, override_reason: how.override || null });
   if (!won) throw bad('This delivery is already complete.');
@@ -142,6 +165,7 @@ async function completeWithCode(d, code, by) {
 }
 async function reissueCode(id, actor) {
   const db = getDb(); const d = await db('deliveries').where({ id }).first(); if (!d) throw new HttpError(404, 'Delivery not found.');
+  if (d.bundle_code) return reissueBundle(d.bundle_code, actor);
   if (d.status === 3) throw bad('This delivery is complete.');
   const secret = randomCode(6);
   await db('deliveries').where({ id }).update({ code_hash: sha256(id + '|' + secret), code_enc: box.seal(secret), code_attempts: 0 });
@@ -262,11 +286,13 @@ async function releaseRestocks() {
       want.map((x, k) => [x - Math.floor(x), k]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).forEach(([, k]) => { if (left > 0) { q[k]++; left--; } });
       share[i.sku] = q;
     }
+    const bundleCode = await newBundleCode(); const secret = randomCode(6);
     for (const [k, h] of hs.entries()) {
       const lines = pack.items.map((i) => ({ sku: i.sku, name: i.name, size: i.size, brand: i.brand, qty: share[i.sku][k], unit_cost: i.cost })).filter((l) => l.qty > 0);
       if (!lines.length) continue;
-      await createDelivery({ kind: 'restock', cycle: c.k, storeUserId: c.store_user_id, holdingId: h.id, packageId: h.package_id, lines, code: `SO-${h.ref.replace('FC-', '')}-R${c.k}` }, null); made++; n++;
+      await createDelivery({ kind: 'restock', cycle: c.k, storeUserId: c.store_user_id, holdingId: h.id, packageId: h.package_id, lines, code: `SO-${h.ref.replace('FC-', '')}-R${c.k}`, bundleCode, secret }, null); made++; n++;
     }
+    if (made) await notifyBundle(bundleCode);
     if (!made) await ensureCycle(c.store_user_id, now()); // nothing sold: the next cycle starts straight away
     await activity.log(null, 'store.restock_released', { type: 'user', id: c.store_user_id }, { cycle: c.k, deliveries: made, share: Math.round(f * 1000) / 10 + '%' });
   }
@@ -274,8 +300,10 @@ async function releaseRestocks() {
 }
 async function autoAdvance() {
   const db = getDb(); const L = await getSetting('logistics'); let n = 0;
-  const open = await db('deliveries').where({ auto: true }).whereIn('status', [0, 1]);
+  const open = await db('deliveries').where({ auto: true }).whereIn('status', [0, 1]).orderBy('created_at');
+  const seen = new Set();
   for (const d of open) {
+    if (d.bundle_code) { if (seen.has(d.bundle_code)) continue; seen.add(d.bundle_code); }
     const last = await db('delivery_log').where({ delivery_id: d.id, stage: d.status }).orderBy('id', 'desc').first();
     const at = new Date(last ? last.at : d.created_at).getTime() + (L.stageHours * 60 + d.delay_minutes) * 60000;
     if (at > Date.now()) continue;
@@ -303,4 +331,59 @@ async function auditReminders() {
   }
   return due.length;
 }
-module.exports = { STAGES, createDelivery, deliveriesForPackage, linesForUnits, advance, markDelivered, completeWithCode, reissueCode, storeAccount, recordAudit, reportRemittance, decideRemittance, reconcile, releaseRestocks, autoAdvance, auditReminders, ensureCycle };
+
+// ---------- delivery bundles ----------
+async function newBundleCode() { return 'BD-' + (await counters.next('bundle', 3001)); }
+async function bundleMembers(code) { const ms = await getDb()('deliveries').where({ bundle_code: code }).orderBy('code'); if (!ms.length) throw new HttpError(404, 'Delivery not found.'); return ms; }
+async function bundleLines(ms) {
+  const all = await getDb()('delivery_lines').whereIn('delivery_id', ms.map((m) => m.id)); const by = new Map();
+  for (const l of all) { const k = l.sku; const x = by.get(k) || { sku: l.sku, name: l.name, size: l.size, brand: l.brand, qty: 0, unit_cost: l.unit_cost }; x.qty += Number(l.qty); by.set(k, x); }
+  return [...by.values()];
+}
+// the bundle as one delivery (for the mart, the console and the driver): lowest stage of its orders, added-up lines and value
+async function bundleView(code) {
+  const ms = await bundleMembers(code); const first = ms.reduce((a, m) => (m.status < a.status ? m : a), ms[0]);
+  return { ...first, code, value: ms.reduce((a, m) => a + Number(m.value), 0), code_attempts: Math.max(...ms.map((m) => m.code_attempts || 0)), members: ms };
+}
+async function notifyBundle(code) { const v = await bundleView(code); await notifyMart(v, await bundleLines(v.members), v.members.length); }
+async function advanceBundle(code, actor, note, expectStatus) {
+  const ms = await bundleMembers(code); const st = Math.min(...ms.map((m) => m.status));
+  if (expectStatus !== undefined && st !== expectStatus) return null;
+  if (st >= 2) throw bad(st === 3 ? 'This delivery is complete.' : 'The last step needs the mart’s delivery code.');
+  const db = getDb(); const mine = ms.filter((x) => x.status === st).map((x) => x.id);
+  // one atomic step for the whole bundle, so two clicks (or two job runners) cannot move it twice
+  if (!(await db('deliveries').whereIn('id', mine).where({ status: st }).update({ status: st + 1, delay_minutes: 0 }))) { if (expectStatus !== undefined) return null; throw bad('This delivery has just moved on.'); }
+  const moved = await db('deliveries').whereIn('id', mine).where({ status: st + 1 });
+  for (const nd of moved) { await logStage(nd, nd.status, note, actor ? actor.type + ':' + actor.id : 'auto'); await notifyHolders(nd); }
+  await notifyBundle(code);
+  return moved[0];
+}
+async function deliverBundle(code, how, actor) {
+  const db = getDb(); const at = now();
+  const open = (await bundleMembers(code)).filter((m) => m.status < 3); if (!open.length) throw bad('This delivery is already complete.');
+  // the whole bundle is claimed in one step, so the driver and the console cannot both complete it
+  if (!(await db('deliveries').whereIn('id', open.map((m) => m.id)).where('status', '<', 3).update({ status: 3, delivered_at: at, override_reason: how.override || null }))) throw bad('This delivery is already complete.');
+  const done = await db('deliveries').whereIn('id', open.map((m) => m.id)).where({ status: 3 });
+  const cur = await db('store_cycles').where({ store_user_id: open[0].store_user_id }).orderBy('k', 'desc').first();
+  if (!cur || (cur.restock_released_at && open[0].kind === 'restock')) await ensureCycle(open[0].store_user_id, at);
+  for (const nd of done) {
+    await logStage(nd, 3, how.override ? 'Override: ' + how.override : 'Confirmed with delivery code', how.by || 'driver');
+    await activity.log(actor || null, 'delivery.delivered', { type: 'delivery', id: nd.id }, { code: nd.code, bundle: code, override: how.override || null });
+    await notifyHolders(nd);
+  }
+  await notifyBundle(code);
+  return done[0];
+}
+async function reissueBundle(code, actor) {
+  const db = getDb(); const ms = await bundleMembers(code); if (ms.every((m) => m.status === 3)) throw bad('This delivery is complete.');
+  const secret = randomCode(6);
+  for (const m of ms) await db('deliveries').where({ id: m.id }).update({ code_hash: sha256(m.id + '|' + secret), code_enc: box.seal(secret), code_attempts: 0 });
+  const store = await db('users').where({ id: ms[0].store_user_id }).first(); const value = ms.reduce((a, m) => a + Number(m.value), 0);
+  await sendEmail({ to: store.email, name: 'Mart Manager', category: 'delivery', ref: code, subject: `New delivery code for order #${code}`, title: 'Your new delivery code', tag: 'New code',
+    lead: `A new delivery code has been issued for order **#${code}** to **${store.shop}**. Earlier codes no longer work.`,
+    blocks: [{ type: 'code', title: 'Delivery code', code: secret, sub: 'Give it to the driver only after counting the bags' }, { type: 'kv', title: 'Order', rows: [['Order number', '#' + code], ['Delivering to', store.shop], ['Value', K.N(value)], ['Issued', K.when()]] },
+      { type: 'note', tone: 'warn', title: 'Keep it private', text: 'The same code is in your mart portal. Tafiki staff will never ask for it.' }] });
+  await activity.log(actor, 'delivery.code_reissued', { type: 'delivery', id: ms[0].id }, { bundle: code });
+  return true;
+}
+module.exports = { newBundleCode, bundleMembers, bundleLines, bundleView, advanceBundle, deliverBundle, reissueBundle, notifyBundle, STAGES, createDelivery, deliveriesForPackage, linesForUnits, advance, markDelivered, completeWithCode, reissueCode, storeAccount, recordAudit, reportRemittance, decideRemittance, reconcile, releaseRestocks, autoAdvance, auditReminders, ensureCycle };

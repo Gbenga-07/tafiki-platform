@@ -231,8 +231,9 @@ test('11. every money movement sent an email receipt with a unique number and th
   assert.equal(payoutRc.length, payoutTx.length, 'one payout advice per payout');
   const red = await db('redemptions').where({ status: 'settled' });
   assert.equal((await db('emails').where({ category: 'payouts' }).where('subject', 'like', 'Redemption%').count({ n: '*' }).first()).n, red.length);
-  const delivered = await db('deliveries').where({ status: 3 });
-  assert.equal(Number((await db('emails').where({ category: 'delivery', direction: 'goods' }).count({ n: '*' }).first()).n), delivered.length, 'goods-received note per delivery');
+  // one goods-received note per physical delivery: a bundle (every stake's stock together) or a single mart order
+  const delivered = await db('deliveries').where({ status: 3 }); const trucks = new Set(delivered.map((d) => d.bundle_code || d.id)).size;
+  assert.equal(Number((await db('emails').where({ category: 'delivery', direction: 'goods' }).count({ n: '*' }).first()).n), trucks, 'goods-received note per delivery');
   const nos = (await db('emails').whereNotNull('receipt_no').select('receipt_no')).map((x) => x.receipt_no);
   assert.equal(new Set(nos).size, nos.length, 'receipt numbers are unique'); nos.forEach((n) => assert.match(n, /^TFK-\d{4}-\d{6}$/));
   const one = payRc[0]; assert.match(one.body_html, /Payment receipt/); assert.match(one.body_text, /Total paid: ₦/); assert.match(one.subject, / · TFK-/);
