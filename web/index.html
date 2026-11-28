@@ -54,12 +54,12 @@
 /* sold-out sticker */
 .so-card{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:22px 18px 24px;background:#fff;border:1px solid #E7ECE2;border-radius:22px;box-shadow:0 6px 18px rgba(29,65,7,.06)}
 .u-card>.so-card{border:0;box-shadow:none;padding:10px 6px 14px;background:none}
-.so-card img{width:168px;height:168px;object-fit:contain;filter:drop-shadow(0 10px 16px rgba(120,70,0,.18));margin-bottom:4px}
+.so-card img{width:200px;height:auto;aspect-ratio:1.1;object-fit:contain;filter:drop-shadow(0 10px 16px rgba(120,70,0,.16));margin-bottom:4px}
 .so-card b{display:block;font:600 18px/1.3 "Poppins",sans-serif;color:var(--x9,#132D04)}
 .so-card span{display:block;font-size:14px;line-height:1.5;color:#6b7a62;max-width:30em}
 .so-card .btn{margin-top:10px}
 .so-inline{display:inline-flex;align-items:center;gap:12px;background:rgba(255,255,255,.95);border-radius:18px;padding:8px 16px 8px 8px;color:#132D04}
-.so-inline img{width:64px;height:64px;object-fit:contain}
+.so-inline img{width:76px;height:68px;object-fit:contain}
 .so-inline b{display:block;font:700 17px "Poppins",sans-serif;color:#5A1640}.so-inline span{display:block;font-size:13px;color:#5d6b55}
 </style>
 <title>Tafiki Investor Platform</title>
@@ -2699,7 +2699,7 @@ function returnEngine(){
  <p class="note" style="text-align:center">Model figures per mart. Targets, not guaranteed.</p>
 </div>`;}
 
-const SOLD_IMG='img/sold-out.webp';
+const SOLD_IMG='img/sold-out.webp?v=2';
 const soldOut=(t,sub,cta)=>`<div class="so-card"><img src="${SOLD_IMG}" alt="Sold out" width="180" height="180" loading="lazy"><b>${t}</b><span>${sub}</span>${cta||''}</div>`;
 function fundingSlides(id){
  const fs=S.stores.filter(s=>s.stage==='funding'&&freeSlots(s)>0).sort((a,b)=>taken(b)-taken(a));
